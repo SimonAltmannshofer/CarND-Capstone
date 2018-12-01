@@ -30,6 +30,9 @@ Once you have the proposed throttle, brake, and steer values, publish it on the 
 that we have created in the `__init__` function.
 
 '''
+GAS_DENSITY = 2.858
+ONE_MPH = 0.44704
+
 
 class DBWNode(object):
     def __init__(self):
@@ -54,25 +57,88 @@ class DBWNode(object):
                                          BrakeCmd, queue_size=1)
 
         # TODO: Create `Controller` object
-        # self.controller = Controller(<Arguments you wish to provide>)
+        min_speed = 0.1
+
+        self.controller = Controller(wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle,
+                                     decel_limit, accel_limit)
 
         # TODO: Subscribe to all the topics you need to
+        rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cmd_callback, queue_size=2)
+        rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_callback, queue_size=2)
+        rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_callback, queue_size=1)
+
+        # additional variables
+        self.dbw_enabled = False
+        self.linear_velocity = None
+        self.angular_velocity = None
+        self.desired_linear_velocity = None
+        self.desired_angular_velocity = None
+        self.last_loop = None
+
+        # constants
+        self.mass = vehicle_mass + fuel_capacity * GAS_DENSITY
+        self.brake_deadband = brake_deadband
+        self.wheel_radius = wheel_radius
 
         self.loop()
 
+    def twist_cmd_callback(self, data):
+        # callback of desired velocities
+        self.desired_linear_velocity = data.twist.linear.x
+
+        if self.desired_linear_velocity < 0:
+            rospy.logwarn("negative linear.x velocity requested: reverse is not available yet")
+            self.desired_linear_velocity = 0.0
+
+        self.desired_angular_velocity = data.twist.angular.z
+
+    def current_velocity_callback(self, data):
+        self.linear_velocity = data.twist.linear.x
+        self.angular_velocity = data.twist.angular.z
+
+    def dbw_enabled_callback(self, tf):
+        self.dbw_enabled = tf
+
     def loop(self):
-        rate = rospy.Rate(50) # 50Hz
+        rate = rospy.Rate(50)  # Carla wants 50Hz
+
         while not rospy.is_shutdown():
-            # TODO: Get predicted throttle, brake, and steering using `twist_controller`
-            # You should only publish the control commands if dbw is enabled
-            # throttle, brake, steering = self.controller.control(<proposed linear velocity>,
-            #                                                     <proposed angular velocity>,
-            #                                                     <current linear velocity>,
-            #                                                     <dbw status>,
-            #                                                     <any other argument you need>)
-            # if <dbw is enabled>:
-            #   self.publish(throttle, brake, steer)
+            now = rospy.get_time()
+
+            if self.autopilot_ready():
+                acceleration, steering = self.controller.control(self.desired_linear_velocity,
+                                                                 self.desired_angular_velocity,
+                                                                 self.linear_velocity,
+                                                                 now - self.last_loop)
+
+                if acceleration > 0:
+                    brake = 0.0
+                    throttle = acceleration
+
+                elif acceleration > -self.brake_deadband:
+                    brake = 0.0
+                    throttle = 0.0
+
+                else:
+                    # mass * acceleration = force | force = torque / radius
+                    brake = -acceleration * self.mass * self.wheel_radius
+                    throttle = 0.0
+
+                self.publish(throttle, brake, steering)
+
+            else:
+                # do not publish drive-by-wire commands if we are driving manually
+                self.controller.reset()
+
+            self.last_loop = now
             rate.sleep()
+
+    def autopilot_ready(self):
+        current_okay = self.linear_velocity is not None and self.angular_velocity is not None
+        desired_okay = self.desired_linear_velocity is not None and self.desired_angular_velocity is not None
+        timing_okay = self.last_loop is not None
+
+        return self.dbw_enabled and current_okay and desired_okay and timing_okay
 
     def publish(self, throttle, brake, steer):
         tcmd = ThrottleCmd()
