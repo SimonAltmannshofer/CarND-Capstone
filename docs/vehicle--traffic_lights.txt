@@ -1,0 +1,58 @@
+header:
+  seq: 18591
+  stamp:
+    secs: 0
+    nsecs:         0
+  frame_id: ''
+lights:
+  -
+    header:
+      seq: 0
+      stamp:
+        secs: 1543672485
+        nsecs: 303205966
+      frame_id: "/world"
+    pose:
+      header:
+        seq: 0
+        stamp:
+          secs: 1543672485
+          nsecs: 303220033
+        frame_id: "/world"
+      pose:
+        position:
+          x: 1172.183
+          y: 1186.299
+          z: 5.576891
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: 0.00061619942315
+          w: 0.999999810149
+    state: 2
+  -
+    header:
+      seq: 0
+      stamp:
+        secs: 1543672485
+        nsecs: 303257942
+      frame_id: "/world"
+    pose:
+      header:
+        seq: 0
+        stamp:
+          secs: 1543672485
+          nsecs: 303272008
+        frame_id: "/world"
+      pose:
+        position:
+          x: 1584.065
+          y: 1156.953
+          z: 5.576705
+        orientation:
+          x: 0.0
+          y: 0.0
+          z: -0.000808451704696
+          w: 0.999999673203
+    state: 2
+  -
