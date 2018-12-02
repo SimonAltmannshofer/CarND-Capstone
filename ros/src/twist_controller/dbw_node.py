@@ -124,6 +124,10 @@ class DBWNode(object):
                     brake = -acceleration * self.mass * self.wheel_radius
                     throttle = 0.0
 
+                rospy.logwarn("current speed {} vs. target speed {}, acceleration {}: throttle {} and brake {}".format(
+                    self.linear_velocity, self.desired_linear_velocity, acceleration, throttle, brake
+                ))
+
                 self.publish(throttle, brake, steering)
 
             else:

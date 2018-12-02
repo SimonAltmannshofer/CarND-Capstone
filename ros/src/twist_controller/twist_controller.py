@@ -32,7 +32,7 @@ class Controller(object):
         # steering = self.steering_filt.filt(steering)
 
         # target velocity filter followed by pid-controller
-        linear_velocity = self.velocity_filt.filt(linear_velocity)
+        # linear_velocity = self.velocity_filt.filt(linear_velocity)
         acceleration = self.acceleration_ctr.step(linear_velocity - current_velocity, dt)
 
         # Return throttle, brake, steer

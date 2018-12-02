@@ -29,11 +29,25 @@ We need to make our python files executable!
 
 `find /home/morieris/CarND-Capstone/ -type f -iname "*.py" -exec chmod +x {} \;`
 
+## running the ros project
+```
+cd ~/CarND-Capstone/ros/
+catkin_make
+source devel/setup.bash 
+roslaunch launch/styx.launch 
+```
+
 ## Object Detection
 After some research this is my (initial) approach:
 - Using the _tensorflow object_detection API_ 
 - Transfer learning using the _ssd_inception_v2_coco_ model from the model-zoo
 
+Make sure that you have installed TensorFlow with CPU support:
+```
+import tensorflow as tf
+tf.test.is_gpu_available()
+# pray for return value: True
+```
 
 Some additional links and tutorials:
 - [Tensorflow sources](https://github.com/tensorflow/tensorflow)
