@@ -10,9 +10,14 @@ from light_classification.tl_classifier import TLClassifier
 import tf
 import cv2
 import yaml
-import math
+import PIL
+import os
 
-STATE_COUNT_THRESHOLD = 3
+STATE_COUNT_THRESHOLD = 2
+NUM_WP_STOP_AFTER_STOPLINE = 1
+LIMIT_CAMERA_FPS = 5
+MAX_DUTY_CYCLE = 0.75
+SAVE_CAMERA_IMAGES_TO = None  # '/home/USER/CarND-Capstone/data/tl_test_simulator'
 
 
 class TLDetector(object):
@@ -20,6 +25,7 @@ class TLDetector(object):
         rospy.init_node('tl_detector')
 
         self.car_pose = None
+        self.car_waypoint = None
         self.waypoints = None
         self.camera_image = None
         self.lights = None
@@ -32,9 +38,6 @@ class TLDetector(object):
         self.config = yaml.load(config_string)
         self.update_stopline_waypoints()
 
-        sub1 = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
-
         '''
         /vehicle/traffic_lights provides you with the location of the traffic light in 3D map space and
         helps you acquire an accurate ground truth data source for the traffic light
@@ -42,26 +45,42 @@ class TLDetector(object):
         simulator. When testing on the vehicle, the color state will not be available. You'll need to
         rely on the position of the light and the camera image to predict it.
         '''
-        sub3 = rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb)
-        sub6 = rospy.Subscriber('/image_color', Image, self.image_cb)
 
         self.upcoming_red_light_pub = rospy.Publisher('/traffic_waypoint', Int32, queue_size=1)
 
         self.bridge = CvBridge()
-        self.light_classifier = TLClassifier()
+        self.light_classifier = TLClassifier(self.config['is_site'])
         self.listener = tf.TransformListener()
 
         self.state = TrafficLight.UNKNOWN
         self.last_state = TrafficLight.UNKNOWN
+        self.last_frame = rospy.get_time()
+        self.last_finish = rospy.get_time()
+        self.busy = False
         self.last_wp = -1
         self.state_count = 0
 
+        self.k = 0
+
         self.stop_line_waypoints = None
+
+        # sub1 = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
+        sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        sub3 = rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb)
+        sub4 = rospy.Subscriber('/image_color', Image, self.image_cb, queue_size=1)
+        sub5 = rospy.Subscriber('/current_waypoint', Int32, self.current_waypoint_cb)
+
+        if SAVE_CAMERA_IMAGES_TO is not None:
+            if not os.path.exists(SAVE_CAMERA_IMAGES_TO):
+                os.makedirs(SAVE_CAMERA_IMAGES_TO)
 
         rospy.spin()
 
     def pose_cb(self, msg):
         self.car_pose = msg.pose
+
+    def current_waypoint_cb(self, msg):
+        self.car_waypoint = msg.data
 
     def waypoints_cb(self, static_lane):
         if self.waypoints is None:
@@ -80,7 +99,7 @@ class TLDetector(object):
     def traffic_cb(self, msg):
         self.lights = msg.lights
         # TODO remove faking lights without camera
-        self.image_cb(None)
+        # self.image_cb(None)
 
     def image_cb(self, msg):
         """Identifies red lights in the incoming camera image and publishes the index
@@ -90,7 +109,22 @@ class TLDetector(object):
             msg (Image): image from car-mounted camera
 
         """
-        self.has_image = True
+        now = rospy.get_time()
+
+        if self.busy:
+            rospy.logwarn("traffic light detection: SKIP still busy with last frame")
+            return
+        elif now - self.last_frame < 1.0/LIMIT_CAMERA_FPS:
+            # limit camera frames to a reasonable level
+            return
+        elif now - self.last_finish < (1.0 - MAX_DUTY_CYCLE)/LIMIT_CAMERA_FPS:
+            rospy.logwarn("traffic light detection: SKIP duty above {}%".format(round(100*MAX_DUTY_CYCLE)))
+            return
+        else:
+            self.busy = True
+            self.last_frame = now
+
+        self.has_image = msg is not None
         self.camera_image = msg
         light_wp, state = self.process_traffic_lights()
 
@@ -112,7 +146,10 @@ class TLDetector(object):
             self.upcoming_red_light_pub.publish(Int32(self.last_wp))
         self.state_count += 1
 
-    def closest_waypoint(self, car_x, car_y, waypoints=None):
+        self.last_finish = rospy.get_time()
+        self.busy = False
+
+    def closest_waypoint(self, x, y, waypoints=None):
         if waypoints is None:
             waypoints = self.waypoints
 
@@ -122,8 +159,8 @@ class TLDetector(object):
 
         # simple linear search as in path-planning-project
         for k, wp in enumerate(waypoints):
-            dx = wp.pose.pose.position.x - car_x
-            dy = wp.pose.pose.position.y - car_y
+            dx = wp.pose.pose.position.x - x
+            dy = wp.pose.pose.position.y - y
 
             d2 = dx * dx + dy * dy
 
@@ -144,10 +181,16 @@ class TLDetector(object):
 
         """
         if not self.has_image:
-            self.prev_light_loc = None
-            return False
+            return TrafficLight.UNKNOWN
 
-        cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
+        cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "rgb8")
+
+        if SAVE_CAMERA_IMAGES_TO is not None:
+            img = PIL.Image.fromarray(cv_image)
+            self.k += 1
+            jpg_file = os.path.join(SAVE_CAMERA_IMAGES_TO, "site_{:05d}.jpg".format(self.k))
+            img.save(jpg_file)
+            rospy.loginfo("saved camera frame to: " + jpg_file)
 
         # Get classification
         return self.light_classifier.get_classification(cv_image)
@@ -164,13 +207,13 @@ class TLDetector(object):
 
         # TODO find the closest visible traffic light (if one exists)
         if self.ready():
-            car_waypoint = self.closest_waypoint(self.car_pose.position.x, self.car_pose.position.y)
+            car_waypoint = self.car_waypoint
 
             light_index = -1
             light_wp = -1
             numel_ahead = len(self.waypoints)
             for index, wp in enumerate(self.stop_line_waypoints):
-                if wp > car_waypoint and wp-car_waypoint < numel_ahead:
+                if wp > car_waypoint-NUM_WP_STOP_AFTER_STOPLINE and wp-car_waypoint < numel_ahead:
                     light_wp = wp
                     light_index = index
                     numel_ahead = wp - car_waypoint
@@ -181,12 +224,10 @@ class TLDetector(object):
             else:
                 state = TrafficLight.UNKNOWN
 
-            # TODO: proper detection using
-            # state = self.get_light_state(light)
+            # proper detection using inference
+            state_deep = self.get_light_state(light_index)
 
-            # rospy.loginfo("upcoming traffic light in {} waypoints with value: {}".format(numel_ahead, state))
-
-            return light_wp, state
+            return light_wp, state_deep
         else:
             return -1, TrafficLight.UNKNOWN
 
@@ -194,7 +235,7 @@ class TLDetector(object):
         # check if all callbacks arrived
         waypoints_okay = self.waypoints is not None and self.stop_line_waypoints is not None
         lights_okay = self.lights is not None
-        pose_okay = self.car_pose is not None
+        pose_okay = self.car_waypoint is not None
         return waypoints_okay and lights_okay and pose_okay
 
 

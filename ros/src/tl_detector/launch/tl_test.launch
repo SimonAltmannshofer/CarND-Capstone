@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="rosbag" type="play" name="rosbag" args="
+  $(find styx)../../../data/just_traffic_light.bag" required="true"/>
+  <node pkg="tl_detector" type="tl_test.py" name="tl_test" output="screen"/>
+</launch>

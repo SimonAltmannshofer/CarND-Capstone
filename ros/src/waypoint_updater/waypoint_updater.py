@@ -22,9 +22,11 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 100 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 100  # Number of waypoints we will publish. You can change this number
 PLAN_ACCELERATION = 1.0
 OVERRIDE_VELOCITY = None
+NUM_WP_STOP_AFTER_STOPLINE = 1  # some tolerance if we did not stop before the stop-line
+NUM_WP_STOP_BEFORE_STOPLINE = 1  # stop a little bit before the stop-line
 
 
 class WaypointUpdater(object):
@@ -38,6 +40,7 @@ class WaypointUpdater(object):
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
+        self.current_waypoint_pub = rospy.Publisher('/current_waypoint', Int32, queue_size=1)
 
         # TODO: Add other member variables you need below
         self.waypoints = None
@@ -46,6 +49,7 @@ class WaypointUpdater(object):
         self.last_index = None
         self.red_light_wp = -1
         self.force_update = True
+        self.last_car_waypoint = None
 
         # maximum allowed velocity
         if OVERRIDE_VELOCITY is None:
@@ -69,12 +73,13 @@ class WaypointUpdater(object):
     def waypoints_cb(self, static_lane):
         if self.waypoints is None:
             self.waypoints = static_lane.waypoints
+            self.last_car_waypoint = None
             # update waypoint distances
             self.update_distances()
 
     def traffic_cb(self, msg):
         if msg.data != self.red_light_wp:
-            # new red light detection
+            # changed traffic light detection
             self.red_light_wp = msg.data
             self.force_update = True
 
@@ -100,34 +105,64 @@ class WaypointUpdater(object):
             delta = self.distance(a, b)
             self.waypoint_distances.append(delta)
 
-    def closest_waypoint(self, waypoints=None, pose=None):
-        if waypoints is None:
-            waypoints = self.waypoints
-        if pose is None:
-            pose = self.car_pose
+    def closest_waypoint(self):
+        """
+        finds the closest waypoint to our current position.
+        To speed things up the search starts from the last known waypoint if possible.
+        The search is stopped once the waypoint-distances start increasing again.
+        """
 
         # ego car position in map-coordinates
-        car_x = pose.position.x
-        car_y = pose.position.y
+        car_x = self.car_pose.position.x
+        car_y = self.car_pose.position.y
 
         # initialize search
-        dmin = 1e12
-        index = -1
+        num_waypoints = len(self.waypoints)
+        if self.last_car_waypoint is None:
+            # last waypoint not know, start in the middle of the track
+            self.last_car_waypoint = int(num_waypoints/2)
+            # force complete search
+            test_all = True
+        else:
+            # relative search with possible early exit
+            test_all = False
 
-        # simple linear search as in path-planning-project
-        for k, wp in enumerate(waypoints):
-            dx = wp.pose.pose.position.x - car_x
-            dy = wp.pose.pose.position.y - car_y
+        def dist_squared(i):
+            """ returns the squared distance to waypoint[i]"""
+            dx = self.waypoints[i].pose.pose.position.x - car_x
+            dy = self.waypoints[i].pose.pose.position.y - car_y
+            return dx**2 + dy**2
 
-            d2 = dx*dx + dy*dy
+        index = self.last_car_waypoint
+        d_min = dist_squared(index)
 
-            if d2 < dmin:
-                dmin = d2
+        # force check of all waypoints in case we are way off our last known position
+        test_all = test_all or d_min > 10**2
+
+        # search ahead
+        for k in range(self.last_car_waypoint+1, num_waypoints):
+            d_k = dist_squared(k)
+
+            if d_k < d_min:
                 index = k
+                d_min = d_k
+            elif not test_all:
+                break
 
+        # search previous
+        for k in range(self.last_car_waypoint-1, -1, -1):
+            d_k = dist_squared(k)
+
+            if d_k < d_min:
+                index = k
+                d_min = d_k
+            elif not test_all:
+                break
+
+        self.last_car_waypoint = index
         return index
 
-    def next_waypoint(self, waypoints=None, pose=None):
+    def next_waypoint(self):
         """
         returns next waypoint ahead of us
         Python copy of the Udacity code from Path-Planning project
@@ -135,23 +170,20 @@ class WaypointUpdater(object):
         :param pose:
         :return:
         """
-        if waypoints is None:
-            waypoints = self.waypoints
-        if pose is None:
-            pose = self.car_pose
 
-        closest = self.closest_waypoint(waypoints, pose)
+        closest = self.closest_waypoint()
 
-        map_x = waypoints[closest].pose.pose.position.x
-        max_y = waypoints[closest].pose.pose.position.y
+        map_x = self.waypoints[closest].pose.pose.position.x
+        max_y = self.waypoints[closest].pose.pose.position.y
 
-        car_x = pose.position.x
-        car_y = pose.position.y
+        car_x = self.car_pose.position.x
+        car_y = self.car_pose.position.y
 
         heading = math.atan2(max_y - car_y, map_x - car_x)
 
         # we need the yaw angle, transform quaternion
-        q = pose.orientation
+        # https://stackoverflow.com/questions/5782658/extracting-yaw-from-a-quaternion
+        q = self.car_pose.orientation
         yaw = math.atan2(2.0*(q.y*q.z + q.w*q.x), q.w*q.w - q.x*q.x - q.y*q.y + q.z*q.z)
 
         # check angle and go to next waypoint if necessary
@@ -160,7 +192,7 @@ class WaypointUpdater(object):
 
         if angle > math.pi / 4.0:
             closest += 1
-            if closest == len(waypoints):
+            if closest == len(self.waypoints):
                 closest = 0
 
         return closest
@@ -171,6 +203,10 @@ class WaypointUpdater(object):
             return
 
         next_wp = self.next_waypoint()
+
+        # publish current waypoint
+        self.current_waypoint_pub.publish(Int32(next_wp-1))
+
         same_wp = self.last_index is not None and self.last_index == next_wp
 
         if same_wp and not self.force_update:
@@ -181,21 +217,21 @@ class WaypointUpdater(object):
         num_waypoints = len(self.waypoints)
 
         # get next stop waypoint, either end of track or red-light
-        if last_wp >= num_waypoints:
+        if last_wp >= num_waypoints - 1:
             last_wp = num_waypoints - 1
 
-            if next_wp <= self.red_light_wp < last_wp:
-                stop_wp = self.red_light_wp
+            if next_wp-NUM_WP_STOP_AFTER_STOPLINE <= self.red_light_wp < last_wp:
+                stop_wp = self.red_light_wp - NUM_WP_STOP_BEFORE_STOPLINE
+                stop_wp = max(stop_wp, next_wp)
             else:
-                stop_wp = last_wp
+                stop_wp = last_wp - NUM_WP_STOP_BEFORE_STOPLINE
 
         else:
-            stop_wp = self.red_light_wp
-
-        # if last >= num_waypoints:
-        #     # use negative indexing for wrap-around of waypoints
-        #     next -= num_waypoints
-        #     last -= num_waypoints
+            if next_wp-NUM_WP_STOP_AFTER_STOPLINE <= self.red_light_wp:
+                stop_wp = self.red_light_wp - NUM_WP_STOP_BEFORE_STOPLINE
+                stop_wp = max(stop_wp, next_wp)
+            else:
+                stop_wp = -1
 
         traj_waypoints = self.waypoints[next_wp:last_wp]
         traj_stop_wp = stop_wp - next_wp
@@ -203,8 +239,6 @@ class WaypointUpdater(object):
         dist_next = self.distance(self.car_pose.position, traj_waypoints[0].pose.pose.position)
         traj_distances = self.waypoint_distances[next_wp:last_wp-1]
         traj_distances.insert(0, dist_next)
-
-        # rospy.loginfo("current waypoint {}, trajectory until {}, with stopping at {} and red-light at {}".format(next_wp, last_wp, stop_wp, self.red_light_wp))
 
         # convert path to trajectory (plan ahead with constant acceleration/deceleration)
         traj_waypoints = self.path_to_trajectory(traj_waypoints, traj_distances, traj_stop_wp)
@@ -232,15 +266,11 @@ class WaypointUpdater(object):
                 x_traj += delta
 
                 v_traj = math.sqrt(2*x_traj*PLAN_ACCELERATION)
-                # waypoints[i].twist.twist.linear.x = v_traj
                 self.set_waypoint_velocity(waypoints, i, min(self.velocity, v_traj))
-
-            # rospy.loginfo("resume with target speed, we have {} waypoints and stop is {}".format(num_waypoints, stop_index))
 
         else:
             # stop at stop-line
             dist_rem = sum(distances[0:stop_index])
-            # rospy.loginfo("remaining brake distance: {} reducing traj-speed from {}".format(dist_rem, current_velocity))
 
             for i in range(num_waypoints):
 
@@ -256,19 +286,7 @@ class WaypointUpdater(object):
                 delta = distances[i]
                 dist_rem -= delta
 
-
         return waypoints
-
-
-
-
-
-
-
-
-
-
-
 
 
 if __name__ == '__main__':

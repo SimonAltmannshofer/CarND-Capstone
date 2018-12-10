@@ -15,14 +15,15 @@ class Controller(object):
         # default yaw controller from Udacity
         self.steering_ctr = YawController(wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle)
 
-        self.acceleration_ctr = PID(5, 0.5, 0.5, decel_limit, accel_limit)
+        # tuned PID controller for the throttle
+        self.throttle_ctr = PID(0.292, 0.2552, 0.02631, decel_limit, accel_limit)
 
-        self.velocity_filt = LowPassFilter(4, 1.0/50.0)
-        self.steering_filt = LowPassFilter(4, 1.0/50.0)
+        # NOT USED YET: SHOULD WE REMOVE THEM ENTIRELY?
+        self.velocity_filt = LowPassFilter(0.25, 1.0/50.0)
+        self.steering_filt = LowPassFilter(0.25, 1.0/50.0)
 
     def reset(self):
-        self.acceleration_ctr.reset()
-
+        self.throttle_ctr.reset()
         self.velocity_filt.reset()
         self.steering_filt.reset()
 
@@ -33,7 +34,7 @@ class Controller(object):
 
         # target velocity filter followed by pid-controller
         # linear_velocity = self.velocity_filt.filt(linear_velocity)
-        acceleration = self.acceleration_ctr.step(linear_velocity - current_velocity, dt)
+        throttle = self.throttle_ctr.step(linear_velocity - current_velocity, dt)
 
         # Return throttle, brake, steer
-        return acceleration, steering
+        return throttle, steering

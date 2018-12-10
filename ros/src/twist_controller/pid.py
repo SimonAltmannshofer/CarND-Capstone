@@ -29,7 +29,8 @@ class PID(object):
         val = max(self.min, min(self.max, val))
 
         # proper saturation of integrator
-        self.int_val = max(self.min/self.ki, min(self.max/self.ki, integral))
+        if self.ki > 0:
+            self.int_val = max(self.min/self.ki, min(self.max/self.ki, integral))
 
         # update current error
         self.last_error = error
