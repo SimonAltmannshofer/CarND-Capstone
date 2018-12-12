@@ -18,7 +18,7 @@ We will install Ubuntu next to Win10 as 2nd operating system. Once Ubuntu is ins
 * Stick to the tested versions: Ubuntu 16.04 with ROS Kinetic 
 
 ### Install ROS: Robot Operating System
-There is a nice guide for the ROS installation on Ubuntu: http://wiki.ros.org/kinetic/Installation/Ubuntu
+There is a nice guide for the ROS installation for Ubuntu: http://wiki.ros.org/kinetic/Installation/Ubuntu
 It pretty much boils down to the following commands:
 ```
     1  sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
@@ -52,7 +52,7 @@ catkin_make
 source devel/setup.bash 
 roslaunch launch/styx.launch 
 ```
-Please note that a recompile is not necessary if you only changed Python code. 
+Note that a recompile is not necessary if you only changed Python code.
 
 ### IDE setup
 You can use the *Ubuntu Software* Center to install **PyCharm CE**.  
@@ -69,24 +69,27 @@ This node extracts a given number of waypoints ahead of our current location. Th
 * `next_waypoint()` find the next-waypoint ahead of us:
     * uses the math from the path-planning-project
     * transformation from quaternions to yaw-angle: https://stackoverflow.com/questions/5782658/extracting-yaw-from-a-quaternion
-* `publish_final_waypoints()` Only publishes upon changes in order to speed things up. Identifies stop-waypoints within our waypoint segment. 
-* `path_to_trajectory()` Updates the velocities within the waypoint-segment. A simple velocity profile with constant acceleration/deceleration is used! `v_traj = math.sqrt(2*dist_rem*PLAN_ACCELERATION)`
+* `publish_final_waypoints()` To speed things up we only publish upon changes. Identifies stop-waypoints within our waypoint segment.
+* `path_to_trajectory()` Updates the velocities within the waypoint-segment.
+    * A simple velocity profile with constant acceleration/deceleration is used!
+    * `v_traj = math.sqrt(2*dist_rem*PLAN_ACCELERATION)`
 * We added the topic `'/current_waypoint'`: It publishes the closest-waypoint and avoids redundant calculations within the Traffic-Light-Detector.
 
 Possible Improvements:
 * Velocity Planning with less jerk, e.g. quintric-poly ...
 * Generation of additional (computed) waypoints instead of the fixed tolerances: `NUM_WP_STOP_AFTER_STOPLINE` and `NUM_WP_STOP_BEFORE_STOPLINE`.
+* Should we do our velocity planning based on the config values of maximum acc/deceleration?
 
 ### Drive By Wire
-This node is a pure velocity-controller. We subscribe to the current and desired linear- and angular-velocities.
+This node is a pure velocity-controller. We subscribe to the current and desired linear- and angular-velocities. The target velocities themselves are calculated by the dark-magic of the *waypoint_follower* cpp-node.
 * `pid.py`: This simple PID controller is used for the throttle-control (normalized 0.0 to 1.0). I added a proper anti-windup.
-* `yaw_controller.py`: Unchanged
+* `yaw_controller.py`: Unchanged, just inverse kinematics ...
 * `twist_controller.py`: Initializes and updates all controllers. 
 * `dbw_node.py`: The ROS wrapper 
     * Updates the controllers
     * In case of negative throttle the actuation is converted to brake-torque in Nm.
     * A minimum braking torque `CREEPING_TORQUE = 700` is applied while stopping (due to the creeping of the automatic transmission).
-    * `RECORD_MANUAL = True`: A logfile with actuations, velocities and positions is written during manual-driving.
+    * `RECORD_MANUAL = True`: A logfile with actuations, velocities and positions is written during manual-driving. This data may be used for system-identification.
 
 ```
 # SIMULATOR: fitted coefficient between throttle and acceleration
@@ -96,7 +99,7 @@ brake = -acceleration * self.mass * self.wheel_radius
 ```
 
 #### Controller Tuning
-To determine the power-ratio of the car a simple motion model was fitted to a recorded-dataset during manual driving.
+To determine the power-ratio of the car a simple motion model was fitted to a recorded-dataset (manual driving).
 
 ![Motion Model][motion_model]
 
@@ -109,7 +112,7 @@ self.throttle_ctr = PID(0.292, 0.2552, 0.02631, decel_limit, accel_limit)
 Possible Improvements:
 * Identification of a proper motion model, but this might not help a lot with the real car
 * Torque feed forward control including steering
-* Check if calculations between torque, throttle and braking are valid
+* Check if calculations between torque, throttle and braking are valid and consistent
 
 ### Object Detection
 After some research this is my (initial) approach:
@@ -126,7 +129,7 @@ After some research this is my (initial) approach:
     - ssdv2tl .. was trained with simulator data only (not used)
     - ssdv2tl_srb ... was trained with all three datasets (used for both, simulator and test-lot)
 - Both models were created with Tensorflow 1.12 which is too new for *Carla*. 
-- WE HAVE TO DO THE TRAINING AGAIN WITH TENSORFLOW 1.3
+- WE HAVE TO DO THE TRAINING AGAIN WITH TENSORFLOW 1.3 (probably in the Udacity-Project-Workspace)
 
 Make sure that you have access to CUDA capable GPU (at least for the actual training):
 ```
@@ -162,8 +165,8 @@ Should be done on a powerful GPU-enabled machine, like AWS:
 - All training is done within the research directory of the tensorflow installation `cd ~/tools/tensorflow/model/research`
 - Add required `PYTHONPATH` by executing: ```export PYTHONPATH=$PYTHONPATH:`pwd`:`pwd`/slim:`pwd`/object_detection```
 - Start the training: `./training_srb.sh`
-- Monitor training process, start tensorboard from a 2nd shell: `tensorboard --logdir=models/ssdv2tl_srb/train` --port=8080
-- Connect with Webbrowser and ... wait ...
+- Monitor training process, start tensorboard from a 2nd shell: `tensorboard --logdir=models/ssdv2tl_srb/train --port=8080`
+- Connect with Webbrowser and ... wait ... for the first model checkpoint and evaluation run (probably 15min)
 - Freeze the final model: `python object_detection/export_inference_graph.py --pipeline_config_path=models/ssdv2tl_srb/model.config --trained_checkpoint_prefix=models/ssdv2tl_srb/train/model.ckpt-10000 --output_directory=models/ssdv2tl_srb/frozen/`
 
 #### Image extraction
@@ -172,7 +175,8 @@ Should be done on a powerful GPU-enabled machine, like AWS:
 
 Possible Improvements:
 * Some additional training data from the simulator might be helpful (especially yellow and red)
-* Or maybe different models from simualator and test-lot: 
+* We have to get it compatible to Carla (tensorflow==1.3)
+* Maybe different models for simualator and test-lot:
 
 ```
 class TLClassifier(object):
@@ -183,6 +187,8 @@ class TLClassifier(object):
         else:
             model = 'models_frozen/ssdv2tl_srb/frozen_inference_graph.pb'
 ```
+
+# BEST OF LUCK
 
 # Original README
 
