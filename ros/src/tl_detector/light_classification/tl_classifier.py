@@ -11,9 +11,9 @@ class TLClassifier(object):
     def __init__(self, is_site):
         # load classifier
         if is_site:
-            model = 'models_frozen/ssdv2tl_srb/frozen_inference_graph.pb'
+            model = 'models_frozen/frozen_srb_simon_tf1-3.pb'
         else:
-            model = 'models_frozen/ssdv2tl_srb/frozen_inference_graph.pb'
+            model = 'models_frozen/frozen_srb_simon_tf1-3.pb'
 
         # relative to file path, otherwise we have got problems with launch-type specific working directory
         base_path = os.path.dirname(os.path.abspath(__file__))
@@ -109,6 +109,7 @@ class TLClassifier(object):
 
                 state = self.index2light[winner]['id']
             else:
+                rospy.loginfo("traffic lights: no detection in {}ms".format(round(100*(time2-time1))))
                 state = TrafficLight.UNKNOWN
 
         return state

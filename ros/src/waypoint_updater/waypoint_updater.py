@@ -22,7 +22,7 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 100  # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 50  # Number of waypoints we will publish. You can change this number
 PLAN_ACCELERATION = 1.0
 OVERRIDE_VELOCITY = None
 NUM_WP_STOP_AFTER_STOPLINE = 1  # some tolerance if we did not stop before the stop-line
@@ -227,7 +227,7 @@ class WaypointUpdater(object):
                 stop_wp = last_wp - NUM_WP_STOP_BEFORE_STOPLINE
 
         else:
-            if next_wp-NUM_WP_STOP_AFTER_STOPLINE <= self.red_light_wp:
+            if next_wp-NUM_WP_STOP_AFTER_STOPLINE <= self.red_light_wp < last_wp:
                 stop_wp = self.red_light_wp - NUM_WP_STOP_BEFORE_STOPLINE
                 stop_wp = max(stop_wp, next_wp)
             else:
