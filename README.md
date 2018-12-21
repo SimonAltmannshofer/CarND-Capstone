@@ -1,8 +1,8 @@
 # CarND-Capstone Project
 Students: 
-* HM: **audi-employee116@udacityenterprise.com**
-* TD: **audi-employeeXXX@udacityenterprise.com**
-* SD: **audi-employeeYYY@udacityenterprise.com**
+* HM: 
+* TD: 
+* SB: 
 
 [motion_model]: ./docs/motion_model.png
 

@@ -6,4 +6,3 @@ devel
 profile.tmp
 .idea
 data/
-ros/src/tl_detector/light_classification/models_frozen/
