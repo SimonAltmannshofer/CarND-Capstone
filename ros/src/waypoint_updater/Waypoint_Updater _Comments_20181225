@@ -1,0 +1,52 @@
+------------------------------------------------------------------------
+Waypoint Updater (25.12.2018)
+------------------------------------------------------------------------
+
+Possible Improvements (I)
+
+(I1) Velocity Planning with less jerk, e.g. quintric-poly ...
+--> more complex planning function gives no guarantee of (acceleration and) jerk limited vehicle behaviour as currently globally given waypoint target velocity values (and not current velocity v_current) are used as a basis for the generated v_traj (even when v_current is not equal to waypoint target velocity, e. g. start from standstill with v_current = 0 and associated globally given waypoint target velocity is 40 km/h (sent as a step function to the controller)
+--> constant acceleration assumption is a robust solution both in terms of vehicle behaviour in combination with a controller that generates the lowpass behavior and smoothes the "edges" in the target velocity profile and concerning programming bugs and time for more complex motion equations
+--> Adaptations according to (Ad1) Improved waypoint planning --> (Ad1.1)
+
+(I2) Generation of additional (computed) waypoints instead of the fixed tolerances: NUM_WP_STOP_AFTER_STOPLINE and NUM_WP_STOP_BEFORE_STOPLINE.
+--> an evaluation of the given waypoint data shows a maximum waypoint distance of around 1.27 m for site (target speed = 10 km/h) and 2.65 m for simulator (most waypoint distances smaller than 1.5 m)
+--> traffic light position (stop line) is only given as a waypoint index
+--> discrete waypoint planning is sufficient to do the job
+--> more complex interpolations would increase calculation time which is limited to test in parallel with the traffic sign classifier
+
+
+(I3) Should we do our velocity planning based on the config values of maximum acc/deceleration?
+--> Adaptations according to (Ad1) Improved waypoint planning --> (Ad1.2)
+
+
+General Adaptations (Ad)
+
+(Ad1) Improved waypoint planning
+
+(Ad1.1) possibility to plan from current velocity instead of corresponding waypoint velocity (for positive accelerations) added to generate smoother jerk and limit acceleration on driveaway (e.g. from simulator starting point, stops at traffic lights)
+---> if the parameter PLAN_ON_CURRENT_VELOCITY is set to True the waypoint velocity in the planned acceleration trajectory is ramped up linearly from the current velocity value and not suddenly set to the corresponding waypoint value (e.g. 40 km/h in a sudden step)
+---> if the parameter PLAN_ON_CURRENT_VELOCITY is set to False the waypoint velocity in the planned acceleration trajectory is set to the corresponding velocity value in the global waypoints vector from the start (without a ramp from the current velocity) 
+
+(Ad1.2) separate parameters for planning acceleration (positive) and deceleration introduced
+---> if the parameter OVERRIDE_ACCELERATION is set to True the parameter values PLAN_ACCELERATION and PLAN_DECELERATION are used
+---> if the parameter OVERRIDE_ACCELERATION is set to False the controller parameters accel_limit (site: 1.0 m/s2, sim: 1.0 m/s2) and decel_limit (site: -1.0 m/s2, sim: -5.0 m/s2) read from dbw.launch (site) or dbw_sim.launch (simulation) are used instead (via self.plan_acceleration = rospy.get_param('/dbw_node/accel_limit') and the selection of the right launch file on start)
+
+(Ad2) Improved debugging functionality
+
+(Ad2.1) if the parameter DEBUG_WAYPOINTS_CSV is set to True a debug csv file ('Debug_Waypoint_Updater.csv') containing the ego state and waypoint planning data over time is written to the 'base_path/data/records/' directory
+
+(Ad2.2) if the parameter DEBUG_WAYPOINTS_LOG is set to True logging outputs concerning the waypoint_updater are shown in the console
+
+(Ad2.3) if the parameter DEBUG_TEST_STOPS is set to True a virtual test stop simulating a red traffic light turning green after a defined number of cycles is initiated at waypoint 400 shortly after the start of the simulation track
+
+(Ad3) Some small code corrections (double declarations, deletion of unused variables)
+
+(Ad4) Comments added or written in more detail
+
+(Ad5) Parameters slightly adjusted (LOOKAHEAD_WPS, PLAN_ACCELERATION, PLAN_DECELERATION, NUM_WP_STOP_AFTER_STOPLINE, NUM_WP_STOP_BEFORE_STOPLINE)
+
+Final comment
+Simulation is still not running in realtime in combination with tl_detector
+--> virtual test stop used for testing (DEBUG_TEST_STOPS = True)
+
