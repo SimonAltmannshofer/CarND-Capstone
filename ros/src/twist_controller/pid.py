@@ -30,7 +30,14 @@ class PID(object):
 
         # proper saturation of integrator
         if self.ki > 0:
-            self.int_val = max(self.min/self.ki, min(self.max/self.ki, integral))
+            # original line
+            # self.int_val = max(self.min/self.ki, min(self.max/self.ki, integral))
+
+            # stop integration if clamping is active
+            if val == self.min or val == self.max:
+                self.int_val = self.int_val
+            else:
+                self.int_val = integral
 
         # update current error
         self.last_error = error

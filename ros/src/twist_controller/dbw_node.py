@@ -4,6 +4,7 @@ import rospy
 from std_msgs.msg import Bool, Float32
 from dbw_mkz_msgs.msg import ThrottleCmd, SteeringCmd, BrakeCmd, SteeringReport
 from geometry_msgs.msg import TwistStamped, PoseStamped
+from lowpass import LowPassFilter
 import math
 import csv
 import os
@@ -34,9 +35,10 @@ that we have created in the `__init__` function.
 '''
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
-RECORD_MANUAL = False
+RECORD_MANUAL = True
 CREEPING_TORQUE = 700
-
+P_THROTTLE = 2200
+D_RESIST = 140
 
 class DBWNode(object):
     def __init__(self):
@@ -61,12 +63,17 @@ class DBWNode(object):
                                          BrakeCmd, queue_size=1)
 
         # TODO: Create `Controller` object
+        # constants
+        self.mass = vehicle_mass + fuel_capacity * GAS_DENSITY
+        self.brake_deadband = brake_deadband
+        self.wheel_radius = wheel_radius
+
         min_speed = 0.1
 
         self.controller = Controller(wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle,
-                                     decel_limit, accel_limit)
+                                     decel_limit, accel_limit, wheel_radius, self.mass, P_THROTTLE, D_RESIST)
 
-        self.csv_fields = ['time', 'x', 'y', 'v', 'a', 'v_des', 'a_des', 'throttle', 'brake', 'steer']
+        self.csv_fields = ['time', 'x', 'y', 'v', 'v_d', 'a', 'v_des', 'a_des', 'throttle', 'brake', 'steer']
         if RECORD_MANUAL:
             base_path = os.path.dirname(os.path.abspath(__file__))
             base_path = os.path.dirname(base_path)
@@ -86,12 +93,16 @@ class DBWNode(object):
             self.csv_writer.writeheader()
             self.csv_data = {key: 0.0 for key in self.csv_fields}
 
-            rospy.logwarn("created logfile for manual driving: " + self.fid.name)
+            rospy.logwarn("crea<ted logfile for manual driving: " + self.fid.name)
 
         # TODO: Subscribe to all the topics you need to
         rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cmd_callback, queue_size=2)
         rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_callback, queue_size=2)
         rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_callback, queue_size=1)
+
+        # lowpass filter
+        self.velocity_filt = LowPassFilter(0.1, 1.0/50.0)
+        self.acceleration_filt = LowPassFilter(0.1, 1.0 / 50.0)
 
         # additional variables
         self.dbw_enabled = False
@@ -100,11 +111,8 @@ class DBWNode(object):
         self.desired_linear_velocity = None
         self.desired_angular_velocity = None
         self.last_loop = None
-
-        # constants
-        self.mass = vehicle_mass + fuel_capacity * GAS_DENSITY
-        self.brake_deadband = brake_deadband
-        self.wheel_radius = wheel_radius
+        self.linear_velocity_old = None
+        self.acceleration = None
 
         self.loop()
 
@@ -136,7 +144,13 @@ class DBWNode(object):
             self.csv_data['a_des'] = self.desired_angular_velocity
 
     def current_velocity_callback(self, data):
-        self.linear_velocity = data.twist.linear.x
+        if self.linear_velocity is not None:
+            self.linear_velocity_old = self.linear_velocity
+        else:
+            self.linear_velocity_old = 0
+
+        self.linear_velocity = self.velocity_filt.filt(data.twist.linear.x)
+        #self.linear_velocity = data.twist.linear.x
         self.angular_velocity = data.twist.angular.z
 
         if RECORD_MANUAL:
@@ -149,14 +163,26 @@ class DBWNode(object):
     def loop(self):
         rate = rospy.Rate(50)  # Carla wants 50Hz
 
-
         while not rospy.is_shutdown():
             now = rospy.get_time()
+
+            if self.last_loop is not None and self.linear_velocity is not None and self.linear_velocity_old is not None:
+                dt = now - self.last_loop
+                accel = self.acceleration_filt.filt((self.linear_velocity - self.linear_velocity_old) / dt)
+                #accel = ((self.linear_velocity - self.linear_velocity_old) / dt)
+                self.acceleration = accel
+                # rospy.loginfo('dt: %s', dt)
+            else:
+                accel = 0
+
+            # rospy.loginfo('velocity: %s', self.linear_velocity)
+            # rospy.loginfo('acceleration: %s', accel)
 
             if self.autopilot_ready():
                 throttle, steering = self.controller.control(self.desired_linear_velocity,
                                                              self.desired_angular_velocity,
                                                              self.linear_velocity,
+                                                             self.acceleration,
                                                              now - self.last_loop)
 
                 if throttle > 0:
@@ -176,7 +202,8 @@ class DBWNode(object):
                 else:
                     # we are decelerating (braking)
                     # SIMULATOR: fitted coefficient between throttle and acceleration
-                    acceleration = 10.84 * throttle
+                    # acceleration = 10.84 * throttle
+                    acceleration = P_THROTTLE/self.wheel_radius/self.mass*throttle
                     # mass * acceleration = force | force = torque / radius
                     brake = -acceleration * self.mass * self.wheel_radius
                     brake = max(brake, CREEPING_TORQUE)
@@ -189,12 +216,15 @@ class DBWNode(object):
                 # do not publish drive-by-wire commands if we are driving manually
                 self.controller.reset()
 
-                if RECORD_MANUAL:
-                    self.csv_data['time'] = now
-                    self.csv_writer.writerow(self.csv_data)
+            if RECORD_MANUAL:
+                self.csv_data['time'] = now
+                self.csv_data['v_d'] = accel
+                self.csv_writer.writerow(self.csv_data)
 
             self.last_loop = now
             rate.sleep()
+
+
 
         if RECORD_MANUAL:
             self.fid.close()

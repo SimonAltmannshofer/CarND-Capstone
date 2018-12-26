@@ -22,7 +22,7 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 50  # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 25  # Number of waypoints we will publish. You can change this number
 PLAN_ACCELERATION = 1.0
 OVERRIDE_VELOCITY = None
 NUM_WP_STOP_AFTER_STOPLINE = 1  # some tolerance if we did not stop before the stop-line
@@ -54,7 +54,8 @@ class WaypointUpdater(object):
         # maximum allowed velocity
         if OVERRIDE_VELOCITY is None:
             self.velocity = rospy.get_param('/waypoint_loader/velocity')
-            self.velocity = (self.velocity * 1000.) / (60. * 60.)
+            # rospy.loginfo('set velocity [km/h]: %s', self.velocity)
+            self.velocity = (self.velocity * 1000.) / (60. * 60.) # km/h to m/s
         else:
             self.velocity = OVERRIDE_VELOCITY
 
