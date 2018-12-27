@@ -389,7 +389,7 @@ class WaypointUpdater(object):
                 stop_wp = -1
 
         # Generate trajectory waypoint vector
-        # traj_waypoints = self.waypoints[next_wp:lookahead_wp]
+        #traj_waypoints = self.waypoints[next_wp:lookahead_wp]  # results in traj_waypoints = [] for lookahead_wp = next_wp
         if(next_wp < lookahead_wp):
             traj_waypoints = self.waypoints[next_wp:lookahead_wp]
         else:
@@ -481,6 +481,10 @@ class WaypointUpdater(object):
         if DEBUG_WAYPOINTS_LOG:
             print("---> initial_plan_velocity   : {}".format(current_velocity))
 
+        if current_velocity is None:
+            # early exit due to missing data
+            return waypoints
+
         """
         if stop_index < 0:
             # accelerate to target speed
@@ -501,7 +505,28 @@ class WaypointUpdater(object):
                 x_traj += distances[i]
                 v_traj = math.sqrt(current_velocity ** 2 + 2 * self.plan_acceleration * x_traj)
                 self.set_waypoint_velocity(waypoints, i, min(self.velocity, v_traj))
-
+        else:
+            # Stop at stop-line with self.plan_deceleration
+            dist_rem = sum(distances[0:stop_index])
+            x_traj = 0
+            for i in range(num_waypoints):
+                x_traj += distances[i]
+                v_traj_acc = math.sqrt(current_velocity ** 2 + 2 * self.plan_acceleration * x_traj)  # potential acceleration trajectory from current velocity till stopping initiated
+                if dist_rem > 0:
+                    v_traj = math.sqrt(2 * dist_rem * abs(self.plan_deceleration))  # needed stopping velocity trajectory with given plan_deceleration
+                else:
+                    v_traj = 0.0
+                # Limit trajectory velocity value by global waypoint velocity (target speed)
+                if PLAN_ON_CURRENT_VELOCITY:
+                    v_traj = min(self.velocity, v_traj, v_traj_acc)  # select smaller value if acceleration from current velocity possible before necessary stop braking
+                else:
+                    v_traj = min(self.velocity, v_traj)
+                # Set waypoint velocity values to generate trajectory as waypoints return value
+                self.set_waypoint_velocity(waypoints, i, v_traj)
+                # Decrease rest distance to stop-line
+                delta = distances[i]
+                dist_rem -= delta
+        """
         else:
             # Stop at stop-line with self.plan_deceleration
             dist_rem = sum(distances[0:stop_index])
@@ -517,6 +542,7 @@ class WaypointUpdater(object):
                 # Decrease rest distance to stop-line
                 delta = distances[i]
                 dist_rem -= delta
+        """
 
         return waypoints
 
