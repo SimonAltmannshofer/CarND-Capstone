@@ -167,7 +167,7 @@ Should be done on a powerful GPU-enabled machine, like AWS:
 - Start the training: `./training_srb.sh`
 - Monitor training process, start tensorboard from a 2nd shell: `tensorboard --logdir=models/ssdv2tl_srb/train --port=8080`
 - Connect with Webbrowser and ... wait ... for the first model checkpoint and evaluation run (probably 15min)
-- Freeze the final model: `python object_detection/export_inference_graph.py --pipeline_config_path=models/ssdv2tl_srb/model.config --trained_checkpoint_prefix=models/ssdv2tl_srb/train/model.ckpt-10000 --output_directory=models/ssdv2tl_srb/frozen/`
+- Freeze the final model: `python object_detection/export_inference_graph.py --pipeline_config_path=models/ssdv2tl_srb_v1_3/pipeline.config --trained_checkpoint_prefix=models/ssdv2tl_srb_v1_3/train_0/model.ckpt-10000 --output_directory=models/ssdv2tl_srb_v1_3/frozen/`
 
 #### Image extraction
 * **Test lot**: We can extract images from the ROSBAG by starting `roscore` and launching `roslaunch tl_detetor/launch/tl_test.launch` 
