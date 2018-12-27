@@ -32,7 +32,7 @@ OVERRIDE_ACCELERATION = False  # If False use dbw.launch (site) or dbw_sim.launc
 OVERRIDE_VELOCITY = None  # Use given (OVERRIDE_VELOCITY = None) or own (OVERRIDE_VELOCITY = target velocity in km/h) target velocity
 PLAN_ON_CURRENT_VELOCITY = True  # Use current velocity as a start for ramping up to waypoint velocity in planned trajectory (True, False)
 NUM_WP_STOP_AFTER_STOPLINE = 2  # 1  # Some tolerance if we did not stop before the stop-line
-NUM_WP_STOP_BEFORE_STOPLINE = 2  # 1  # Stop a little bit before the stop-line
+NUM_WP_STOP_BEFORE_STOPLINE = 5  # 1  # Stop a little bit before the stop-line
 DEBUG_WAYPOINTS_CSV = False  # Activate/Deactivate node debug outputs via csv (True, False)
 DEBUG_WAYPOINTS_LOG = False  # Activate/Deactivate node debug outputs via console (True, False)
 DEBUG_TEST_STOPS = False  # Activate/Deactivate a virtual test stop simulating a red traffic light turning green after a defined number of cycles
@@ -78,6 +78,7 @@ class WaypointUpdater(object):
         self.object_wp = -1  # index of the waypoint for nearest frontal object (allowance)
         self.force_update = True  # control variable to force cyclic waypoint updates
         self.cycle_counter = 0  # counter variable to control virtual test stop interval (DEBUG_TEST_STOPS)
+        self.tl_counter = 0  # counter variable to control virtual test stop location (DEBUG_TEST_STOPS)
 
         # Maximum allowed velocity as target velocity
         if OVERRIDE_VELOCITY is None:
@@ -365,19 +366,28 @@ class WaypointUpdater(object):
             # Debug test stops
             # **********************************************************
             if DEBUG_TEST_STOPS:
-                if(self.red_light_wp != 600 and self.red_light_wp != -10):  # two debug tests
-                    self.red_light_wp = 400  # debug
-                print("Test stop at self.red_light_wp:")
+                # Stop line positions
+                tl_wp = [292, 753, 2047, 2580, 6294, 7008, 8540, 9733]  # virtual stop lines
+                # Simulated detection intervals (waypoints) around stop line
+                start_tl_detection_wp = [i_tl_wp - 100 for i_tl_wp in tl_wp]
+                end_tl_detection_wp = [i_tl_wp + 10 for i_tl_wp in tl_wp]
+                # Set red_light_wp to simulated stop line position
+                for i_tl in range(len(tl_wp)):
+                    if (i_tl == self.tl_counter and start_tl_detection_wp[i_tl] <= next_wp and next_wp <= end_tl_detection_wp[i_tl]):
+                        self.red_light_wp = tl_wp[i_tl]
+                # Console output
+                print("Test stop at self.red_light_wp: {}".format(tl_wp))
                 print("---> next_wp              : {}".format(next_wp))
                 print("---> self.red_light_wp    : {}".format(self.red_light_wp))
                 print("---> self.linear_velocity : {}".format(self.linear_velocity))
                 print("---> self.cycle_counter   : {}".format(self.cycle_counter))
-                if ((abs(next_wp - self.red_light_wp) < 5) and (self.linear_velocity < 3)):
+                # Stop for 300 cycles at stop line
+                if ((abs(next_wp - self.red_light_wp) < 8) and (self.linear_velocity < 3)):
                     self.cycle_counter += 1
                 if (self.cycle_counter > 300):
-                    self.red_light_wp = -10  # debug (1) no red light in sight
-                    #self.red_light_wp = 600  # debug (2) new red light in sight
+                    self.red_light_wp = -10
                     self.cycle_counter = 0
+                    self.tl_counter += 1
 
             # End of track not yet in lookahead horizon (lookahead_wp < num_waypoints - 1)
             if next_wp-NUM_WP_STOP_AFTER_STOPLINE <= self.red_light_wp < lookahead_wp:
@@ -455,7 +465,7 @@ class WaypointUpdater(object):
             print('***********************************************************')
             print("---> next_wp                 : {}".format(next_wp))
             print("---> lookahead_wp            : {}".format(lookahead_wp))
-            print("---> stop_wp                 : {}".format(lookahead_wp))
+            print("---> stop_wp                 : {}".format(stop_wp))
             print("---> self.linear_velocity    : {}".format(self.linear_velocity))
             print("---> traj_waypoints_velx[0]  : {}".format(traj_waypoints_velx_debug[0]))
             print("---> traj_waypoints_velx[{}] : {}".format(len(traj_waypoints_velx_debug)-1, traj_waypoints_velx_debug[len(traj_waypoints_velx_debug)-1]))
