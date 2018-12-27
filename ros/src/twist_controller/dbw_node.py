@@ -35,7 +35,7 @@ that we have created in the `__init__` function.
 '''
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
-RECORD_MANUAL = True
+RECORD_MANUAL = False
 CREEPING_TORQUE = 700
 P_THROTTLE = 2200
 D_RESIST = 140

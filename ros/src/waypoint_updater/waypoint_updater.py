@@ -32,7 +32,7 @@ OVERRIDE_ACCELERATION = False  # If False use dbw.launch (site) or dbw_sim.launc
 OVERRIDE_VELOCITY = None  # Use given (OVERRIDE_VELOCITY = None) or own (OVERRIDE_VELOCITY = target velocity in km/h) target velocity
 PLAN_ON_CURRENT_VELOCITY = True  # Use current velocity as a start for ramping up to waypoint velocity in planned trajectory (True, False)
 NUM_WP_STOP_AFTER_STOPLINE = 2  # 1  # Some tolerance if we did not stop before the stop-line
-NUM_WP_STOP_BEFORE_STOPLINE = 5  # 1  # Stop a little bit before the stop-line
+NUM_WP_STOP_BEFORE_STOPLINE = 6  # 1  # Stop a little bit before the stop-line
 DEBUG_WAYPOINTS_CSV = False  # Activate/Deactivate node debug outputs via csv (True, False)
 DEBUG_WAYPOINTS_LOG = False  # Activate/Deactivate node debug outputs via console (True, False)
 DEBUG_TEST_STOPS = False  # Activate/Deactivate a virtual test stop simulating a red traffic light turning green after a defined number of cycles
@@ -328,7 +328,9 @@ class WaypointUpdater(object):
     def publish_final_waypoints(self):
 
         if self.waypoints is None or self.car_pose is None:
-            # early exit due to missing data
+            # Early exit due to missing data
+            if DEBUG_WAYPOINTS_LOG:
+                rospy.loginfo("Early exit due to missing data: self.waypoints = {}, self.car_pose = {}".format(self.waypoints, self.car_pose))
             return
 
         # Get next waypoint ID with helper function
@@ -340,7 +342,9 @@ class WaypointUpdater(object):
         # Check necessity of waypoint update for current cycle
         same_wp = self.last_car_waypoint is not None and self.last_car_waypoint == next_wp
         if same_wp and not self.force_update:
-            # no update of waypoints required
+            # No update of waypoints required
+            if DEBUG_WAYPOINTS_LOG:
+                rospy.loginfo("No update of waypoints required: same_wp = {}".format(same_wp))
             return
 
         # Set current lookahead waypoint index based on parameter LOOKAHEAD_WPS
