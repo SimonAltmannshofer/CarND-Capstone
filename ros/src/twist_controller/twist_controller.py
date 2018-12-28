@@ -63,7 +63,7 @@ class Controller(object):
         a_des = max(min(self.velocity_ctr.max, a_des), self.velocity_ctr.min)
         self.a_des_old = a_des
 
-        if linear_velocity == 0.0 and current_velocity < 0.1:
+        if linear_velocity == 0.0 and 1e-4 < current_velocity < 0.1:
             a_des = -1
 
         # feed forward control
