@@ -5,7 +5,6 @@ from std_msgs.msg import Bool, Float32
 from dbw_mkz_msgs.msg import ThrottleCmd, SteeringCmd, BrakeCmd, SteeringReport
 from geometry_msgs.msg import TwistStamped, PoseStamped
 from lowpass import LowPassFilter
-import math
 import csv
 import os
 
@@ -36,7 +35,7 @@ that we have created in the `__init__` function.
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
 RECORD_MANUAL = False
-CREEPING_TORQUE = 700
+CREEPING_TORQUE = 1000
 P_THROTTLE = 2200
 D_RESIST = 140
 
@@ -102,7 +101,7 @@ class DBWNode(object):
 
         # lowpass filter
         self.velocity_filt = LowPassFilter(0.1, 1.0/50.0)
-        self.acceleration_filt = LowPassFilter(0.1, 1.0 / 50.0)
+        self.acceleration_filt = LowPassFilter(0.05, 1.0 / 50.0)
 
         # additional variables
         self.dbw_enabled = False
@@ -202,10 +201,8 @@ class DBWNode(object):
                 else:
                     # we are decelerating (braking)
                     # SIMULATOR: fitted coefficient between throttle and acceleration
-                    # acceleration = 10.84 * throttle
-                    acceleration = P_THROTTLE/self.wheel_radius/self.mass*throttle
                     # mass * acceleration = force | force = torque / radius
-                    brake = -acceleration * self.mass * self.wheel_radius
+                    brake = - P_THROTTLE*throttle
                     brake = max(brake, CREEPING_TORQUE)
 
                     throttle = 0.0

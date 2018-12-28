@@ -12,12 +12,14 @@ import cv2
 import yaml
 import PIL
 import os
+import math
 
 STATE_COUNT_THRESHOLD = 2
 NUM_WP_STOP_AFTER_STOPLINE = 1
 LIMIT_CAMERA_FPS = 5
 MAX_DUTY_CYCLE = 0.75
 SAVE_CAMERA_IMAGES_TO = None  # '/home/USER/CarND-Capstone/data/tl_test_simulator'
+CENTER_TO_BUMPER = 3.0
 
 
 class TLDetector(object):
@@ -92,7 +94,7 @@ class TLDetector(object):
             self.stop_line_waypoints = []
 
             for xy in self.config['stop_line_positions']:
-                stop_wp = self.closest_waypoint(xy[0], xy[1])
+                stop_wp = self.find_stop_waypoint(xy[0], xy[1])
                 self.stop_line_waypoints.append(stop_wp)
                 rospy.loginfo("stop line waypoint xy = ({}, {}) at waypoint {}".format(xy[0], xy[1], stop_wp))
 
@@ -149,24 +151,33 @@ class TLDetector(object):
         self.last_finish = rospy.get_time()
         self.busy = False
 
-    def closest_waypoint(self, x, y, waypoints=None):
-        if waypoints is None:
-            waypoints = self.waypoints
-
+    def find_stop_waypoint(self, x, y):
         # initialize search
         dmin = 1e12
         index = -1
 
+        def distance(i_wp1, i_wp2):
+            """ returns the squared distance to waypoint[i]"""
+            dx = self.waypoints[i_wp1].pose.pose.position.x - self.waypoints[i_wp2].pose.pose.position.x
+            dy = self.waypoints[i_wp1].pose.pose.position.y - self.waypoints[i_wp2].pose.pose.position.y
+            return math.sqrt(dx**2 + dy**2)
+
         # simple linear search as in path-planning-project
-        for k, wp in enumerate(waypoints):
+        for k, wp in enumerate(self.waypoints):
             dx = wp.pose.pose.position.x - x
             dy = wp.pose.pose.position.y - y
 
-            d2 = dx * dx + dy * dy
+            d2 = math.sqrt(dx * dx + dy * dy)
 
             if d2 < dmin:
                 dmin = d2
                 index = k
+
+        # search backwards in order to stop before and not on the stop-line
+        delta = 0.0
+        while index >= 0 and delta < CENTER_TO_BUMPER:
+            delta += distance(index, index-1)
+            index -= 1
 
         return index
 

@@ -5,8 +5,8 @@ from yaw_controller import YawController
 
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
-JERK_MAX =  1
-JERK_MIN = -1
+JERK_MAX =  1.0
+JERK_MIN = -1.0
 
 
 class Controller(object):
@@ -47,7 +47,7 @@ class Controller(object):
 
         # steering controller followed by filter
         steering = self.steering_ctr.get_steering(linear_velocity, angular_velocity, current_velocity)
-        # steering = self.steering_filt.filt(steering)
+        steering = self.steering_filt.filt(steering)
 
         # target velocity filter followed by pid-controller
         # linear_velocity = self.velocity_filt.filt(linear_velocity)
@@ -62,6 +62,10 @@ class Controller(object):
         # saturation
         a_des = max(min(self.velocity_ctr.max, a_des), self.velocity_ctr.min)
         self.a_des_old = a_des
+
+        if linear_velocity == 0.0 and current_velocity < 0.1:
+            a_des = -1
+
         # feed forward control
         throttle_FF = self.r/self.p*(self.m*a_des + self.d*current_velocity)
         # feed back control
