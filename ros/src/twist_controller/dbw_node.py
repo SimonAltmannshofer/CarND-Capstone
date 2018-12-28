@@ -34,7 +34,7 @@ that we have created in the `__init__` function.
 '''
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
-RECORD_MANUAL = False
+RECORD_CSV = False
 CREEPING_TORQUE = 1000
 P_THROTTLE = 2200
 D_RESIST = 140
@@ -73,7 +73,7 @@ class DBWNode(object):
                                      decel_limit, accel_limit, wheel_radius, self.mass, P_THROTTLE, D_RESIST)
 
         self.csv_fields = ['time', 'x', 'y', 'v', 'v_d', 'a', 'v_des', 'a_des', 'throttle', 'brake', 'steer']
-        if RECORD_MANUAL:
+        if RECORD_CSV:
             base_path = os.path.dirname(os.path.abspath(__file__))
             base_path = os.path.dirname(base_path)
             base_path = os.path.dirname(base_path)
@@ -81,7 +81,7 @@ class DBWNode(object):
             base_path = os.path.join(base_path, 'data', 'records')
             if not os.path.exists(base_path):
                 os.makedirs(base_path)
-            csv_file = os.path.join(base_path, 'manual_driving_log.csv')
+            csv_file = os.path.join(base_path, 'driving_log.csv')
 
             rospy.Subscriber('/current_pose', PoseStamped, self.pose_callback)
             rospy.Subscriber('/vehicle/steering_report', SteeringReport, self.steering_callback)
@@ -92,7 +92,7 @@ class DBWNode(object):
             self.csv_writer.writeheader()
             self.csv_data = {key: 0.0 for key in self.csv_fields}
 
-            rospy.logwarn("crea<ted logfile for manual driving: " + self.fid.name)
+            rospy.logwarn("created logfile for manual driving: " + self.fid.name)
 
         # TODO: Subscribe to all the topics you need to
         rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cmd_callback, queue_size=2)
@@ -138,7 +138,7 @@ class DBWNode(object):
 
         self.desired_angular_velocity = data.twist.angular.z
 
-        if RECORD_MANUAL:
+        if RECORD_CSV:
             self.csv_data['v_des'] = self.desired_linear_velocity
             self.csv_data['a_des'] = self.desired_angular_velocity
 
@@ -152,7 +152,7 @@ class DBWNode(object):
         #self.linear_velocity = data.twist.linear.x
         self.angular_velocity = data.twist.angular.z
 
-        if RECORD_MANUAL:
+        if RECORD_CSV:
             self.csv_data['v'] = self.linear_velocity
             self.csv_data['a'] = self.angular_velocity
 
@@ -213,7 +213,7 @@ class DBWNode(object):
                 # do not publish drive-by-wire commands if we are driving manually
                 self.controller.reset()
 
-            if RECORD_MANUAL:
+            if RECORD_CSV:
                 self.csv_data['time'] = now
                 self.csv_data['v_d'] = accel
                 self.csv_writer.writerow(self.csv_data)
@@ -221,9 +221,7 @@ class DBWNode(object):
             self.last_loop = now
             rate.sleep()
 
-
-
-        if RECORD_MANUAL:
+        if RECORD_CSV:
             self.fid.close()
 
     def autopilot_ready(self):
