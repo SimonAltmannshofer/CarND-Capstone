@@ -25,7 +25,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 # Parameters to configure the WaypointUpdater class
-LOOKAHEAD_WPS = 40  # 25  # Number of waypoints to be published. You can change this number
+LOOKAHEAD_WPS = 25  # 25  # Number of waypoints to be published. You can change this number
 PLAN_ACCELERATION = 1.0  # Acceleration used for waypoint planning if OVERRIDE_ACCELERATION == True
 PLAN_DECELERATION = -5.0  # -1.0 # Deceleration used for waypoint planning if OVERRIDE_ACCELERATION == True
 OVERRIDE_ACCELERATION = False  # If False use dbw.launch (site) or dbw_sim.launch (simulation) parameters accel_limit (site: 1.0 m/s2, sim: 1.0 m/s2) and decel_limit (site: -1.0 m/s2, sim: -5.0 m/s2) instead of PLAN_ACCELERATION and PLAN_DECELERATION
@@ -35,7 +35,7 @@ NUM_WP_STOP_AFTER_STOPLINE = 2  # 1  # Some tolerance if we did not stop before 
 NUM_WP_STOP_BEFORE_STOPLINE = 2  # 1  # Stop a little bit before the stop-line
 DEBUG_WAYPOINTS_CSV = False  # Activate/Deactivate node debug outputs via csv (True, False)
 DEBUG_WAYPOINTS_LOG = False  # Activate/Deactivate node debug outputs via console (True, False)
-DEBUG_TEST_STOPS = False  # Activate/Deactivate a virtual test stop simulating a red traffic light turning green after a defined number of cycles
+DEBUG_TEST_STOPS = True  # Activate/Deactivate a virtual test stop simulating a red traffic light turning green after a defined number of cycles
 
 # Class definition for the waypoint_updater node
 class WaypointUpdater(object):

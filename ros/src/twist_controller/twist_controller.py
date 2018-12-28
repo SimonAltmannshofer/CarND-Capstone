@@ -5,8 +5,8 @@ from yaw_controller import YawController
 
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
-JERK_MAX =  10
-JERK_MIN = -10
+JERK_MAX =  1
+JERK_MIN = -1
 
 
 class Controller(object):

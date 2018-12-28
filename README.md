@@ -98,6 +98,15 @@ acceleration = 10.84 * throttle
 brake = -acceleration * self.mass * self.wheel_radius
 ```
 
+#### Longitudianl controller
+
+The longitudinal controller consists of 
+- PI-controller for velocity (acceleration as output)
+- desired acceleration value as well as its gradient are limited
+- two degree of freedom controller for acceleration
+    - feedforward control of the acceleration with identified longitudinal dynamics (see below)
+    - PI controller for deviation between desired acceleration and actual acceleration
+
 #### Controller Tuning
 To determine the power-ratio of the car a simple motion model was fitted to a recorded-dataset (manual driving).
 
@@ -108,6 +117,8 @@ The coefficients of a time-discrete PID-controller were tuned using Matlab-Simul
 # tuned PID controller for the throttle
 self.throttle_ctr = PID(0.292, 0.2552, 0.02631, decel_limit, accel_limit)
 ```
+
+
 
 Possible Improvements:
 * Identification of a proper motion model, but this might not help a lot with the real car
