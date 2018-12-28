@@ -35,7 +35,6 @@ NUM_WP_STOP_AFTER_STOPLINE = 2  # 1  # Some tolerance if we did not stop before 
 NUM_WP_STOP_BEFORE_STOPLINE = 1  # 1  # Stop a little bit before the stop-line
 DEBUG_WAYPOINTS_CSV = False  # Activate/Deactivate node debug outputs via csv (True, False)
 DEBUG_WAYPOINTS_LOG = False  # Activate/Deactivate node debug outputs via console (True, False)
-DEBUG_TEST_STOPS = True  # Activate/Deactivate a virtual test stop simulating a red traffic light turning green after a defined number of cycles
 
 # Class definition for the waypoint_updater node
 class WaypointUpdater(object):
@@ -51,8 +50,6 @@ class WaypointUpdater(object):
         # it is passed as an argument to callback_function.
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
-
-        # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
         rospy.Subscriber('/obstacle_waypoint', Int32, self.obstacle_cb)
 
@@ -67,19 +64,17 @@ class WaypointUpdater(object):
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
         self.current_waypoint_pub = rospy.Publisher('/current_waypoint', Int32, queue_size=1)
 
-        # TODO: Add other member variables you need below
         # Member variables of the WaypointUpdater class
         self.waypoints = None  # global map waypoints initially loaded and stored
         self.waypoint_distances = None  # initially pre calculated distances between global waypoints
-        self.last_car_waypoint = None  # index of closest waypoint to car position from last cycle
+        self.last_closest_wp = None  # index of closest waypoint to car position from last cycle
+        self.last_next_wp = None  # index of next waypoint from last cycle (first waypoint of last trajectory)
         self.car_pose = None  # car position (in m) and orientation data (in rad)
         self.linear_velocity = None  # car longitudinal velocity in m/s
         self.angular_velocity = None  # car yaw rate in rad/s
         self.red_light_wp = -1  # index of the waypoint for nearest upcoming red light's stop line
         self.object_wp = -1  # index of the waypoint for nearest frontal object (allowance)
         self.force_update = True  # control variable to force cyclic waypoint updates
-        self.cycle_counter = 0  # counter variable to control virtual test stop interval (DEBUG_TEST_STOPS)
-        self.tl_counter = 0  # counter variable to control virtual test stop location (DEBUG_TEST_STOPS)
         self.dbw_enabled = False
 
         # Maximum allowed velocity as target velocity
@@ -168,6 +163,7 @@ class WaypointUpdater(object):
 
     def dbw_enabled_callback(self, tf):
         self.dbw_enabled = tf
+        self.force_update |= not self.dbw_enabled
 
     # Callback to set current self.waypoints variable for incoming message static_lane on subscribed topic
     # (rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb))
@@ -180,7 +176,8 @@ class WaypointUpdater(object):
             # waypoints.twist.twist.angular.x/y/z
             self.waypoints = static_lane.waypoints  # initialize global waypoints
             self.update_distances()  # initialize waypoint distances
-            self.last_car_waypoint = None  # initialize closest waypoint to car position
+            self.last_closest_wp = None  # initialize closest waypoint to car position
+            self.last_next_wp = None
 
     # Callback to set current self.red_light_wp variable
     # for incoming message msg on subscribed topic
@@ -190,16 +187,16 @@ class WaypointUpdater(object):
         if msg.data != self.red_light_wp:
             # changed traffic light detection
             self.red_light_wp = msg.data
-            self.force_update = True
+            # traffic light is within our lookahead horizon, force update of trajectory
+            self.force_update |= self.red_light_wp - self.last_next_wp < LOOKAHEAD_WPS
 
     # Callback to set current self.object_wp variable
     # for incoming message msg on subscribed topic
     # (rospy.Subscriber('/obstacle_waypoint', Int32, self.obstacle_cb))
     def obstacle_cb(self, msg):
-        # TODO: Callback for /obstacle_waypoint message. We will implement it later
+        # TODO: Callback for /obstacle_waypoint message. We will not implement this ...
         self.object_wp = msg.data
-        self.force_update = True
-        #pass
+        self.force_update |= self.object_wp - self.last_next_wp < LOOKAHEAD_WPS
 
     # Helper function to get the velocity value for a given waypoint in the waypoints vector
     def get_waypoint_velocity(self, waypoint):
@@ -240,9 +237,9 @@ class WaypointUpdater(object):
         # Initialize search
         num_waypoints = len(self.waypoints)
         # The waypoint the ego vehicle was closest to in the last cycle
-        if self.last_car_waypoint is None:
+        if self.last_closest_wp is None:
             # last waypoint not known, start in the middle of the track
-            self.last_car_waypoint = int(num_waypoints/2)
+            self.last_closest_wp = int(num_waypoints / 2)
             # force complete search
             test_all = True
         else:
@@ -256,14 +253,14 @@ class WaypointUpdater(object):
             return dx**2 + dy**2
 
         # Initialize minimum distance with distance to last_car_waypoint
-        index = self.last_car_waypoint
+        index = self.last_closest_wp
         d_min = dist_squared(index)
 
         # Force check of all waypoints in case we are way off our last known position
         test_all = test_all or d_min > 10**2
 
         # Search waypoints ahead
-        for k in range(self.last_car_waypoint+1, num_waypoints):
+        for k in range(self.last_closest_wp + 1, num_waypoints):
             d_k = dist_squared(k)
             if d_k < d_min:
                 index = k
@@ -272,7 +269,7 @@ class WaypointUpdater(object):
                 break
 
         # Search previous waypoints
-        for k in range(self.last_car_waypoint-1, -1, -1):
+        for k in range(self.last_closest_wp - 1, -1, -1):
             d_k = dist_squared(k)
             if d_k < d_min:
                 index = k
@@ -280,7 +277,7 @@ class WaypointUpdater(object):
             elif not test_all:
                 break
 
-        self.last_car_waypoint = index
+        self.last_closest_wp = index
         return index
 
     # Helper function that outputs the next waypoint to the current vehicle position
@@ -341,7 +338,16 @@ class WaypointUpdater(object):
         # Get next waypoint ID with helper function
         next_wp = self.next_waypoint()
 
-        # Publish current waypoint
+        # check if we crossed a waypoint
+        same_wp = self.last_next_wp is not None and self.last_next_wp == next_wp
+
+        if same_wp and not self.force_update:
+            # no update of waypoints required
+            pass
+        else:
+            self.last_next_wp = next_wp
+
+        # Publish waypoint behind of us as current one
         self.current_waypoint_pub.publish(Int32(next_wp-1))  # -1 has to be interpreted correctly
 
         # Set current lookahead waypoint index based on parameter LOOKAHEAD_WPS
@@ -350,9 +356,8 @@ class WaypointUpdater(object):
         # Get next stop waypoint, either end of track or red-light
         num_waypoints = len(self.waypoints)  # total number of given global waypoints for track
         if lookahead_wp >= num_waypoints - 1:
-
             # End of track in lookahead horizon
-            lookahead_wp = num_waypoints - 1  # lookahead waypoint set to end of track
+            lookahead_wp = num_waypoints  # lookahead waypoint set to end of track
             if next_wp-NUM_WP_STOP_AFTER_STOPLINE <= self.red_light_wp < lookahead_wp:
                 # Stop before red stop light in lookahead horizon before end of track
                 stop_wp = self.red_light_wp - NUM_WP_STOP_BEFORE_STOPLINE
@@ -360,36 +365,9 @@ class WaypointUpdater(object):
             else:
                 # Stop before end of track
                 stop_wp = lookahead_wp - NUM_WP_STOP_BEFORE_STOPLINE
+                stop_wp = max(next_wp, stop_wp)
 
         else:
-
-            # **********************************************************
-            # Debug test stops
-            # **********************************************************
-            if DEBUG_TEST_STOPS:
-                # Stop line positions
-                tl_wp = [288, 748, 2041, 2574, 6291, 7003, 8536, 9728]  # virtual stop lines
-                # Simulated detection intervals (waypoints) around stop line
-                start_tl_detection_wp = [i_tl_wp - 100 for i_tl_wp in tl_wp]
-                end_tl_detection_wp = [i_tl_wp + 10 for i_tl_wp in tl_wp]
-                # Set red_light_wp to simulated stop line position
-                for i_tl in range(len(tl_wp)):
-                    if i_tl == self.tl_counter and start_tl_detection_wp[i_tl] <= next_wp <= end_tl_detection_wp[i_tl]:
-                        self.red_light_wp = tl_wp[i_tl]
-                # Console output
-                print("Test stop at self.red_light_wp: {}".format(tl_wp))
-                print("---> next_wp              : {}".format(next_wp))
-                print("---> self.red_light_wp    : {}".format(self.red_light_wp))
-                print("---> self.linear_velocity : {}".format(self.linear_velocity))
-                print("---> self.cycle_counter   : {}".format(self.cycle_counter))
-                # Stop for 300 cycles at stop line
-                if ((abs(next_wp - self.red_light_wp) < 8) and (self.linear_velocity < 3)):
-                    self.cycle_counter += 1
-                if (self.cycle_counter > 300):
-                    self.red_light_wp = -10
-                    self.cycle_counter = 0
-                    self.tl_counter += 1
-
             # End of track not yet in lookahead horizon (lookahead_wp < num_waypoints - 1)
             if next_wp-NUM_WP_STOP_AFTER_STOPLINE <= self.red_light_wp < lookahead_wp:
                 # Stop before red stop light in lookahead horizon
@@ -400,15 +378,10 @@ class WaypointUpdater(object):
                 stop_wp = -1
 
         # Generate trajectory waypoint vector
-        #traj_waypoints = self.waypoints[next_wp:lookahead_wp]  # results in traj_waypoints = [] for lookahead_wp = next_wp
-        if next_wp < lookahead_wp:
-            traj_waypoints = self.waypoints[next_wp:lookahead_wp]
-        else:
-            traj_waypoints = [self.waypoints[next_wp]]
-            stop_wp = next_wp
+        traj_waypoints = self.waypoints[next_wp:lookahead_wp]
 
         # Generate stop waypoint index in reference to trajectory vector
-        traj_stop_wp = stop_wp - next_wp  # stop not realized in final trajectory for negative values
+        traj_stop_wp = stop_wp - next_wp
 
         # Calculate distance from trajectory start waypoint (next waypoint) to current car position
         dist_next = self.distance(self.car_pose.position, traj_waypoints[0].pose.pose.position)
@@ -417,10 +390,12 @@ class WaypointUpdater(object):
         traj_distances = self.waypoint_distances[next_wp:lookahead_wp-1]
         traj_distances.insert(0, dist_next)
 
-        # Convert path to trajectory (plan ahead with constant acceleration/deceleration)
         if self.dbw_enabled:
-            traj_waypoints = self.path_to_trajectory(traj_waypoints, traj_distances, traj_stop_wp)
+            # Convert path to trajectory (plan ahead with constant acceleration/deceleration)
+            traj_waypoints = self.path_to_trajectory(traj_waypoints, traj_distances, traj_stop_wp, self.force_update)
+            self.force_update = False
         else:
+            # Manual driving, set current velocity as planned velocity
             for i in range(len(traj_waypoints)):
                 self.set_waypoint_velocity(traj_waypoints, i, self.linear_velocity)
 
@@ -431,7 +406,7 @@ class WaypointUpdater(object):
         lane.waypoints = traj_waypoints
 
         # Update waypoints
-        self.force_update = False
+
         self.final_waypoints_pub.publish(lane)
 
         # **********************************************************
@@ -479,7 +454,7 @@ class WaypointUpdater(object):
 
     # Helper function that generates a trajectory from the planned local waypoints
     # using given acceleration and deceleration values and taking into account the target speed
-    def path_to_trajectory(self, waypoints, distances, stop_index=-1):
+    def path_to_trajectory(self, waypoints, distances, stop_index=-1, force_update=False):
 
         # Number of path waypoints to associate a target velocity with (trajectory)
         num_waypoints = len(waypoints)
@@ -490,9 +465,15 @@ class WaypointUpdater(object):
             current_velocity = self.linear_velocity
         else:
             # Start trajectory planning (positive accelerations) from corresponding waypoint velocity
-            # (set to 11.111 for almost the whole track (including ego start position))
-            current_velocity = self.get_waypoint_velocity(waypoints[0])
-            # print("current velocity: {}m/s".format(current_velocity))
+            if force_update:
+                # Plan relative to car-position
+                current_velocity = self.linear_velocity
+                print("FORCE trajectory update v_cur = {}".format(current_velocity))
+            else:
+                # Continue last trajectory, plan relative to next waypoint
+                current_velocity = self.get_waypoint_velocity(waypoints[0])
+                distances[0] = 0.0
+                # print("continue, trajectory, from  v = {}".format(current_velocity))
 
         if DEBUG_WAYPOINTS_LOG:
             print("---> initial_plan_velocity   : {}".format(current_velocity))
@@ -515,16 +496,17 @@ class WaypointUpdater(object):
             x_traj = 0
             for i in range(num_waypoints):
                 x_traj += distances[i]
-                v_traj_acc = math.sqrt(current_velocity ** 2 + 2 * self.plan_acceleration * x_traj)  # potential acceleration trajectory from current velocity till stopping initiated
+                # potential acceleration trajectory from current velocity till stopping initiated
+                v_traj_acc = math.sqrt(current_velocity ** 2 + 2 * self.plan_acceleration * x_traj)
                 if dist_rem > 0:
-                    v_traj = math.sqrt(2 * dist_rem * abs(self.plan_deceleration))  # needed stopping velocity trajectory with given plan_deceleration
+                    # needed stopping velocity trajectory with given plan_deceleration
+                    v_traj = math.sqrt(2 * dist_rem * abs(self.plan_deceleration))
                 else:
                     v_traj = 0.0
+
                 # Limit trajectory velocity value by global waypoint velocity (target speed)
-                if PLAN_ON_CURRENT_VELOCITY:
-                    v_traj = min(self.velocity, v_traj, v_traj_acc)  # select smaller value if acceleration from current velocity possible before necessary stop braking
-                else:
-                    v_traj = min(self.velocity, v_traj)
+                v_traj = min(self.velocity, v_traj, v_traj_acc)
+
                 # Set waypoint velocity values to generate trajectory as waypoints return value
                 self.set_waypoint_velocity(waypoints, i, v_traj)
                 # Decrease rest distance to stop-line
