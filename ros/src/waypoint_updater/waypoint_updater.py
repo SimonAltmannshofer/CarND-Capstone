@@ -407,17 +407,22 @@ class WaypointUpdater(object):
         else:
             # Manual driving, set current velocity as planned velocity
             for i in range(len(traj_waypoints)):
-                self.set_waypoint_velocity(traj_waypoints, i, self.linear_velocity)
+                if self.linear_velocity is None:
+                    current_velocity = 0.0
+                else:
+                    current_velocity = self.linear_velocity
+                self.set_waypoint_velocity(traj_waypoints, i, current_velocity)
 
         # Generate Lane message to publish
-        lane = Lane()
-        lane.header.frame_id = '/trajectory'
-        lane.header.stamp = rospy.Time(0)
-        lane.waypoints = traj_waypoints
+        if traj_waypoints is not None:
+            lane = Lane()
+            lane.header.frame_id = '/trajectory'
+            lane.header.stamp = rospy.Time(0)
+            lane.waypoints = traj_waypoints
 
-        # Update waypoints
+            # Update waypoints
 
-        self.final_waypoints_pub.publish(lane)
+            self.final_waypoints_pub.publish(lane)
 
         # **********************************************************
         # Debug output (csv and console)
@@ -489,8 +494,8 @@ class WaypointUpdater(object):
             print("---> initial_plan_velocity   : {}".format(current_velocity))
 
         if current_velocity is None:
-            # early exit due to missing data
-            return waypoints
+            # try to stop if we do not know our current speed
+            current_velocity = 0.0
 
         # Accelerate with given self.plan_acceleration to target velocity self.velocity
         if stop_index < 0:
