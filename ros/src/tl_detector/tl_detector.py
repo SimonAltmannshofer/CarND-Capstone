@@ -20,7 +20,7 @@ LIMIT_CAMERA_FPS = 4
 MAX_DUTY_CYCLE = 0.75
 SAVE_CAMERA_IMAGES_TO = None  # '/home/USER/CarND-Capstone/data/tl_test_simulator'
 CENTER_TO_BUMPER = 2.5
-FORCE_RED_LIGHT_SECONDS = 0.0  # Fore stop at every stop-line for at least XX seconds
+FORCE_RED_LIGHT_SECONDS = 0.0  # Force stop at every stop-line for at least XX seconds
 VERBOSE = False  # increased debug messages
 
 class TLDetector(object):

@@ -35,7 +35,7 @@ that we have created in the `__init__` function.
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
 RECORD_CSV = False
-CREEPING_TORQUE = 1000
+CREEPING_TORQUE = 800
 P_THROTTLE = 2200
 D_RESIST = 140
 
@@ -101,7 +101,7 @@ class DBWNode(object):
 
         # lowpass filter
         self.velocity_filt = LowPassFilter(0.1, 1.0/50.0)
-        self.acceleration_filt = LowPassFilter(0.05, 1.0 / 50.0)
+        self.acceleration_filt = LowPassFilter(0.2, 1.0 / 50.0)
 
         # additional variables
         self.dbw_enabled = False
@@ -201,9 +201,12 @@ class DBWNode(object):
                 else:
                     # we are decelerating (braking)
                     # SIMULATOR: fitted coefficient between throttle and acceleration
-                    # mass * acceleration = force | force = torque / radius
-                    brake = - P_THROTTLE*throttle
-                    brake = max(brake, CREEPING_TORQUE)
+                    if self.desired_angular_velocity <= 0.1 and self.linear_velocity <= 1.0:
+                        brake = CREEPING_TORQUE
+                    else:
+                        # mass * acceleration = force | force = torque / radius
+                        brake = - P_THROTTLE * throttle
+                    # brake = max(brake, CREEPING_TORQUE)
 
                     throttle = 0.0
 

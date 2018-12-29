@@ -5,8 +5,8 @@ from yaw_controller import YawController
 
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
-JERK_MAX =  1.0
-JERK_MIN = -1.0
+JERK_MAX =  10.0
+JERK_MIN = -10.0
 
 
 class Controller(object):
@@ -26,7 +26,7 @@ class Controller(object):
         # tuned PID controller for the throttle
         self.throttle_ctr = PID(0.292, 0.2552, 0.02631, decel_limit, accel_limit)
         self.velocity_ctr = PID(3.34,  0.195,  0.0,     decel_limit, accel_limit)
-        self.acceleration_ctr = PID(0.0, 0.2, 0.0,     -5.0, 1.0)
+        self.acceleration_ctr = PID(0.2, 0.0, 0.0,     -5.0, 1.0)
 
         # NOT USED YET: SHOULD WE REMOVE THEM ENTIRELY?
         self.acceleration_fit = LowPassFilter(0.25, 1.0/50.0)
@@ -55,6 +55,11 @@ class Controller(object):
 
         # cascaded velocity and acceleration control with feedforward
         a_des = self.velocity_ctr.step(linear_velocity - current_velocity, dt)
+
+        # when stopping
+        if linear_velocity == 0.0 and 1e-4 < current_velocity < 1.0:
+            a_des = -2
+
         # rate limiter
         a_delta = a_des - self.a_des_old
         a_delta = max(min(JERK_MAX, a_delta), JERK_MIN)
@@ -62,15 +67,12 @@ class Controller(object):
         # saturation
         a_des = max(min(self.velocity_ctr.max, a_des), self.velocity_ctr.min)
         self.a_des_old = a_des
-
-        if linear_velocity == 0.0 and 1e-4 < current_velocity < 0.1:
-            a_des = -1
+        # print("a_des: {}".format(a_des))
 
         # feed forward control
         throttle_FF = self.r/self.p*(self.m*a_des + self.d*current_velocity)
         # feed back control
         throttle_FB = self.acceleration_ctr.step(a_des - current_accel, dt)
-        # total throttle from feed forward and feed back
         throttle = 1*throttle_FF + 1*throttle_FB
 
         # Return throttle, brake, steer
