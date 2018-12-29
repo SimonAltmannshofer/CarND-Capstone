@@ -34,10 +34,11 @@ that we have created in the `__init__` function.
 '''
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
-RECORD_CSV = False
-CREEPING_TORQUE = 800
-P_THROTTLE = 2200
-D_RESIST = 140
+RECORD_CSV = False  # write states and actor-values to a csv-file
+RECORD_TIME_TRIGGERED = False  # if True one row will be written in each dbw-cycle, otherwise upon cur-velocity-callback
+CREEPING_TORQUE = 800  # minimum braking torque during standstill (avoid creeping)
+P_THROTTLE = 2200  # engine power factor [Nm/1]: torque = P_THROTTLE * throttle
+D_RESIST = 140  # velocity dependant resistance [N/(m/s)]
 
 class DBWNode(object):
     def __init__(self):
@@ -61,18 +62,21 @@ class DBWNode(object):
         self.brake_pub = rospy.Publisher('/vehicle/brake_cmd',
                                          BrakeCmd, queue_size=1)
 
-        # TODO: Create `Controller` object
-        # constants
+        # Initialize constants for feed-forward-control
         self.mass = vehicle_mass + fuel_capacity * GAS_DENSITY
         self.brake_deadband = brake_deadband
         self.wheel_radius = wheel_radius
+        rospy.loginfo("DriveByWire with Feed Forward Control: mass={}kg and wheel_radius={}m".format(
+            self.mass, self.wheel_radius
+        ))
 
+        # Create controller object
         min_speed = 0.1
-
         self.controller = Controller(wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle,
                                      decel_limit, accel_limit, wheel_radius, self.mass, P_THROTTLE, D_RESIST)
 
-        self.csv_fields = ['time', 'x', 'y', 'v', 'v_d', 'a', 'v_des', 'a_des', 'throttle', 'brake', 'steer']
+        # optional logging to a csv-file
+        self.csv_fields = ['time', 'x', 'y', 'v_raw', 'v', 'v_d', 'a', 'v_des', 'a_des', 'throttle', 'brake', 'steer']
         if RECORD_CSV:
             base_path = os.path.dirname(os.path.abspath(__file__))
             base_path = os.path.dirname(base_path)
@@ -94,7 +98,7 @@ class DBWNode(object):
 
             rospy.logwarn("created logfile for manual driving: " + self.fid.name)
 
-        # TODO: Subscribe to all the topics you need to
+        # Subscribe to all required topics
         rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cmd_callback, queue_size=2)
         rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_callback, queue_size=2)
         rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_callback, queue_size=1)
@@ -105,13 +109,16 @@ class DBWNode(object):
 
         # additional variables
         self.dbw_enabled = False
-        self.linear_velocity = None
+        self.current_linear_velocity = None
         self.angular_velocity = None
         self.desired_linear_velocity = None
         self.desired_angular_velocity = None
         self.last_loop = None
         self.linear_velocity_old = None
-        self.acceleration = None
+        self.current_acceleration = None
+
+        self.dbw_ready = False
+        self.acc_ready = False
 
         self.loop()
 
@@ -143,18 +150,23 @@ class DBWNode(object):
             self.csv_data['a_des'] = self.desired_angular_velocity
 
     def current_velocity_callback(self, data):
-        if self.linear_velocity is not None:
-            self.linear_velocity_old = self.linear_velocity
+        # callback of current vehicle velocities
+        if self.current_linear_velocity is not None:
+            self.linear_velocity_old = self.current_linear_velocity
         else:
             self.linear_velocity_old = 0
 
-        self.linear_velocity = self.velocity_filt.filt(data.twist.linear.x)
-        #self.linear_velocity = data.twist.linear.x
+        self.current_linear_velocity = self.velocity_filt.filt(data.twist.linear.x)
         self.angular_velocity = data.twist.angular.z
 
         if RECORD_CSV:
-            self.csv_data['v'] = self.linear_velocity
+            self.csv_data['v_raw'] = data.twist.linear.x
+            self.csv_data['v'] = self.current_linear_velocity
             self.csv_data['a'] = self.angular_velocity
+
+            if not RECORD_TIME_TRIGGERED:
+                self.csv_data['time'] = rospy.get_time()
+                self.csv_writer.writerow(self.csv_data)
 
     def dbw_enabled_callback(self, tf):
         self.dbw_enabled = tf
@@ -165,23 +177,20 @@ class DBWNode(object):
         while not rospy.is_shutdown():
             now = rospy.get_time()
 
-            if self.last_loop is not None and self.linear_velocity is not None and self.linear_velocity_old is not None:
+            if self.acceleration_calc_ready():
+                # calculate current acceleration (derivative of velocity)
                 dt = now - self.last_loop
-                accel = self.acceleration_filt.filt((self.linear_velocity - self.linear_velocity_old) / dt)
-                #accel = ((self.linear_velocity - self.linear_velocity_old) / dt)
-                self.acceleration = accel
-                # rospy.loginfo('dt: %s', dt)
-            else:
-                accel = 0
+                acceleration_raw = (self.current_linear_velocity - self.linear_velocity_old) / dt
+                self.current_acceleration = self.acceleration_filt.filt(acceleration_raw)
 
-            # rospy.loginfo('velocity: %s', self.linear_velocity)
-            # rospy.loginfo('acceleration: %s', accel)
+            else:
+                self.current_acceleration = 0.0
 
             if self.autopilot_ready():
                 throttle, steering = self.controller.control(self.desired_linear_velocity,
                                                              self.desired_angular_velocity,
-                                                             self.linear_velocity,
-                                                             self.acceleration,
+                                                             self.current_linear_velocity,
+                                                             self.current_acceleration,
                                                              now - self.last_loop)
 
                 if throttle > 0:
@@ -201,12 +210,11 @@ class DBWNode(object):
                 else:
                     # we are decelerating (braking)
                     # SIMULATOR: fitted coefficient between throttle and acceleration
-                    if self.desired_angular_velocity <= 0.1 and self.linear_velocity <= 1.0:
+                    if self.desired_angular_velocity <= 0.1 and self.current_linear_velocity <= 1.0:
                         brake = CREEPING_TORQUE
                     else:
                         # mass * acceleration = force | force = torque / radius
                         brake = - P_THROTTLE * throttle
-                    # brake = max(brake, CREEPING_TORQUE)
 
                     throttle = 0.0
 
@@ -217,9 +225,10 @@ class DBWNode(object):
                 self.controller.reset()
 
             if RECORD_CSV:
-                self.csv_data['time'] = now
                 self.csv_data['v_d'] = accel
-                self.csv_writer.writerow(self.csv_data)
+                if RECORD_TIME_TRIGGERED:
+                    self.csv_data['time'] = now
+                    self.csv_writer.writerow(self.csv_data)
 
             self.last_loop = now
             rate.sleep()
@@ -228,11 +237,25 @@ class DBWNode(object):
             self.fid.close()
 
     def autopilot_ready(self):
-        current_okay = self.linear_velocity is not None and self.angular_velocity is not None
-        desired_okay = self.desired_linear_velocity is not None and self.desired_angular_velocity is not None
-        timing_okay = self.last_loop is not None
+        # returns true if the drive-by-wire is fully initialized and ready
+        if not self.dbw_ready:
+            current_okay = self.current_linear_velocity is not None and self.angular_velocity is not None
+            desired_okay = self.desired_linear_velocity is not None and self.desired_angular_velocity is not None
+            timing_okay = self.last_loop is not None
 
-        return self.dbw_enabled and current_okay and desired_okay and timing_okay
+            self.dbw_ready = current_okay and desired_okay and timing_okay
+
+        return self.dbw_enabled and self.dbw_ready
+
+    def acceleration_calc_ready(self):
+        # return True if all data required for the acceleration calculation is available
+        if not self.acc_ready:
+            timing_okay = self.last_loop is not None
+            velocity_okay = self.current_linear_velocity is not None and self.linear_velocity_old is not None
+
+            self.acc_ready = timing_okay and velocity_okay
+
+        return self.acc_ready
 
     def publish(self, throttle, brake, steer):
         tcmd = ThrottleCmd()

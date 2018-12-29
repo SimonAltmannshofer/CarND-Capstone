@@ -5,7 +5,7 @@ from yaw_controller import YawController
 
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
-JERK_MAX =  10.0
+JERK_MAX = 10.0
 JERK_MIN = -10.0
 
 
@@ -15,50 +15,54 @@ class Controller(object):
                  decel_limit, accel_limit, r, m, p, d):
 
         # constants
-        self.r = r
-        self.m = m
-        self.p = p
-        self.d = d
+        self.r = r  # wheel radius [m]
+        self.m = m  # total vehicle mass [kg]
+        self.p = p  # engine power factor [Nm/1]
+        self.d = d  # velocity dependant resistance  [N/(m/s)]
+        self.decel_limit = decel_limit
 
         # default yaw controller from Udacity
         self.steering_ctr = YawController(wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle)
 
-        # tuned PID controller for the throttle
+        # Controller A not used anymore: tuned PID controller for the throttle
         self.throttle_ctr = PID(0.292, 0.2552, 0.02631, decel_limit, accel_limit)
+
+        # Controller B currently in use: cascaded PID controllers with feed-forward
+        # 1st stage: maps velocity_error to desired_acceleration
         self.velocity_ctr = PID(3.34,  0.195,  0.0,     decel_limit, accel_limit)
+        # 2nd stage: maps acceleration_error to throttle
         self.acceleration_ctr = PID(0.2, 0.0, 0.0,     -5.0, 1.0)
 
-        # NOT USED YET: SHOULD WE REMOVE THEM ENTIRELY?
-        self.acceleration_fit = LowPassFilter(0.25, 1.0/50.0)
-        self.velocity_filt    = LowPassFilter(0.25, 1.0/50.0)
-        self.steering_filt    = LowPassFilter(0.25, 1.0/50.0)
+        # filter for steering (steering is calculated by inverse kinematics)
+        self.steering_filt = LowPassFilter(0.25, 1.0/50.0)
 
-        # some values
+        # remember last desired acceleration for jerk-calculation
         self.a_des_old = None
 
     def reset(self):
+        # Reset of controller A:
         self.throttle_ctr.reset()
-        self.velocity_filt.reset()
-        self.steering_filt.reset()
+        # Reset of controller B:
+        self.velocity_ctr.reset()
+        self.acceleration_ctr.reset()
 
-    def control(self, linear_velocity, angular_velocity, current_velocity, current_accel, dt):
+    def control(self, desired_velocity, angular_velocity, current_velocity, current_accel, dt):
         if self.a_des_old is None:
             self.a_des_old = 0
 
         # steering controller followed by filter
-        steering = self.steering_ctr.get_steering(linear_velocity, angular_velocity, current_velocity)
+        steering = self.steering_ctr.get_steering(desired_velocity, angular_velocity, current_velocity)
         steering = self.steering_filt.filt(steering)
 
-        # target velocity filter followed by pid-controller
-        # linear_velocity = self.velocity_filt.filt(linear_velocity)
+        # Controller A:
         # throttle = self.throttle_ctr.step(linear_velocity - current_velocity, dt)
 
-        # cascaded velocity and acceleration control with feedforward
-        a_des = self.velocity_ctr.step(linear_velocity - current_velocity, dt)
+        # Controller B: cascaded velocity and acceleration control with feed-forward
+        a_des = self.velocity_ctr.step(desired_velocity - current_velocity, dt)
 
         # when stopping
-        if linear_velocity == 0.0 and 1e-4 < current_velocity < 1.0:
-            a_des = -2
+        if desired_velocity == 0.0 and 1e-4 < current_velocity < 1.0:
+            a_des = max(-2, self.decel_limit)
 
         # rate limiter
         a_delta = a_des - self.a_des_old
@@ -67,7 +71,6 @@ class Controller(object):
         # saturation
         a_des = max(min(self.velocity_ctr.max, a_des), self.velocity_ctr.min)
         self.a_des_old = a_des
-        # print("a_des: {}".format(a_des))
 
         # feed forward control
         throttle_FF = self.r/self.p*(self.m*a_des + self.d*current_velocity)
@@ -75,5 +78,4 @@ class Controller(object):
         throttle_FB = self.acceleration_ctr.step(a_des - current_accel, dt)
         throttle = 1*throttle_FF + 1*throttle_FB
 
-        # Return throttle, brake, steer
         return throttle, steering
