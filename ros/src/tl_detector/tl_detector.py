@@ -91,15 +91,16 @@ class TLDetector(object):
             light_index, light_wp = self.next_traffic_light()
             forced_stop_duration = now - self.time_forced_stop
 
-            if light_wp - self.car_waypoint > 5:
+            if light_wp >= self.forced_stop_wp and light_wp - self.car_waypoint > 5:
                 self.time_forced_stop = now
                 self.forced_stop_wp = light_wp
                 forced_stop_duration = 0.0
 
             elif forced_stop_duration < FORCE_RED_LIGHT_SECONDS:
-                self.forced_stop_wp = light_wp
-
+                # keep self.forced_stop_wp unchanged
+                pass
             else:
+                # release stop condition
                 self.forced_stop_wp = -1
 
             # publish, rate limiting is done by self.publish() method

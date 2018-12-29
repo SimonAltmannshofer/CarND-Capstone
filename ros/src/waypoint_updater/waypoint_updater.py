@@ -20,8 +20,6 @@ Once you have created dbw_node, you will update this node to use the status of t
 Please note that our simulator also provides the exact location of traffic lights and their
 current status in `/vehicle/traffic_lights` message. You can use this message to build this node
 as well as to verify your TL classifier.
-
-TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 # Parameters to configure the WaypointUpdater class
@@ -29,12 +27,13 @@ LOOKAHEAD_WPS = 40  # 25  # Number of waypoints to be published. You can change 
 PLAN_ACCELERATION = 1.0  # Acceleration used for waypoint planning if OVERRIDE_ACCELERATION == True
 PLAN_DECELERATION = -5.0  # -1.0 # Deceleration used for waypoint planning if OVERRIDE_ACCELERATION == True
 OVERRIDE_ACCELERATION = False  # If False use dbw.launch (site) or dbw_sim.launch (simulation) parameters accel_limit (site: 1.0 m/s2, sim: 1.0 m/s2) and decel_limit (site: -1.0 m/s2, sim: -5.0 m/s2) instead of PLAN_ACCELERATION and PLAN_DECELERATION
-OVERRIDE_VELOCITY = None  # Use given (OVERRIDE_VELOCITY = None) or own (OVERRIDE_VELOCITY = target velocity in km/h) target velocity
-PLAN_ON_CURRENT_VELOCITY = False  # Use current velocity as a start for ramping up to waypoint velocity in planned trajectory (True, False)
+OVERRIDE_VELOCITY = None  # Use given (OVERRIDE_VELOCITY = None) or own (OVERRIDE_VELOCITY = target velocity in m/s)
+PLAN_ON_CURRENT_VELOCITY = False  # Use current car-velocity for trajectory planning instead of continuous trajectory
 NUM_WP_STOP_AFTER_STOPLINE = 2  # 1  # Some tolerance if we did not stop before the stop-line
 NUM_WP_STOP_BEFORE_STOPLINE = 1  # 1  # Stop a little bit before the stop-line
 DEBUG_WAYPOINTS_CSV = False  # Activate/Deactivate node debug outputs via csv (True, False)
 DEBUG_WAYPOINTS_LOG = False  # Activate/Deactivate node debug outputs via console (True, False)
+MIN_WAYPOINT_SPEED_ACC = 0.1  # Minimum speed for a waypoint during acceleration (avoid deadlocks)
 
 # Class definition for the waypoint_updater node
 class WaypointUpdater(object):
@@ -186,17 +185,28 @@ class WaypointUpdater(object):
         # Iteratively called to set the waypoint for a red traffic light's stop line
         if msg.data != self.red_light_wp:
             # changed traffic light detection
-            self.red_light_wp = msg.data
+            change_in_lookahead = self.red_light_wp - self.last_next_wp < LOOKAHEAD_WPS or \
+                                  msg.data - self.last_next_wp < LOOKAHEAD_WPS
+
             # traffic light is within our lookahead horizon, force update of trajectory
-            self.force_update |= self.red_light_wp - self.last_next_wp < LOOKAHEAD_WPS
+            self.force_update |= change_in_lookahead
+            # update internal traffic-light state
+            self.red_light_wp = msg.data
 
     # Callback to set current self.object_wp variable
     # for incoming message msg on subscribed topic
     # (rospy.Subscriber('/obstacle_waypoint', Int32, self.obstacle_cb))
     def obstacle_cb(self, msg):
         # TODO: Callback for /obstacle_waypoint message. We will not implement this ...
-        self.object_wp = msg.data
-        self.force_update |= self.object_wp - self.last_next_wp < LOOKAHEAD_WPS
+        if msg.data != self.object_wp:
+            # changed object detection
+            change_in_lookahead = self.object_wp - self.last_next_wp < LOOKAHEAD_WPS or \
+                                  msg.data - self.last_next_wp < LOOKAHEAD_WPS
+
+            # object is within lookahead horizon
+            self.force_update |= change_in_lookahead
+            # update internal object waypoint
+            self.object_wp = msg.data
 
     # Helper function to get the velocity value for a given waypoint in the waypoints vector
     def get_waypoint_velocity(self, waypoint):
@@ -465,10 +475,10 @@ class WaypointUpdater(object):
             current_velocity = self.linear_velocity
         else:
             # Start trajectory planning (positive accelerations) from corresponding waypoint velocity
-            if force_update:
+            if force_update or abs(self.get_waypoint_velocity(waypoints[0])) == 0:
                 # Plan relative to car-position
                 current_velocity = self.linear_velocity
-                print("FORCE trajectory update v_cur = {}".format(current_velocity))
+                # print("FORCE trajectory update v_cur = {}".format(current_velocity))
             else:
                 # Continue last trajectory, plan relative to next waypoint
                 current_velocity = self.get_waypoint_velocity(waypoints[0])
@@ -489,6 +499,8 @@ class WaypointUpdater(object):
             for i in range(num_waypoints):
                 x_traj += distances[i]
                 v_traj = math.sqrt(current_velocity ** 2 + 2 * self.plan_acceleration * x_traj)
+                # ensure minimum waypoint speed during acceleration to avoid deadlocks in standstill
+                v_traj = max(v_traj, MIN_WAYPOINT_SPEED_ACC)
                 self.set_waypoint_velocity(waypoints, i, min(self.velocity, v_traj))
         else:
             # Stop at stop-line with self.plan_deceleration
@@ -498,6 +510,8 @@ class WaypointUpdater(object):
                 x_traj += distances[i]
                 # potential acceleration trajectory from current velocity till stopping initiated
                 v_traj_acc = math.sqrt(current_velocity ** 2 + 2 * self.plan_acceleration * x_traj)
+                # ensure minimum waypoint speed during acceleration to avoid deadlocks in standstill
+                v_traj_acc = max(v_traj_acc, MIN_WAYPOINT_SPEED_ACC)
                 if dist_rem > 0:
                     # needed stopping velocity trajectory with given plan_deceleration
                     v_traj = math.sqrt(2 * dist_rem * abs(self.plan_deceleration))
@@ -514,6 +528,7 @@ class WaypointUpdater(object):
                 dist_rem -= delta
 
         return waypoints
+
 
 if __name__ == '__main__':
     try:
