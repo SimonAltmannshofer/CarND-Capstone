@@ -5,6 +5,7 @@ Students:
 * SB: 
 
 [motion_model]: ./docs/motion_model.png
+[controller_long]: ./docs/ControllerLong.png
 
 There are several options available for setting up the development environment: 
 * **Windows Host + VBox:** With the simulator running in Windows and ROS running in a Ubuntu VirtualBox. This option was **discarded due to terrible performance**. 
@@ -106,6 +107,8 @@ The longitudinal controller consists of
 - two degree of freedom controller for acceleration
     - feedforward control of the acceleration with identified longitudinal dynamics (see below)
     - PI controller for deviation between desired acceleration and actual acceleration
+
+![Longitudinal Controller][controller_long]
 
 #### Controller Tuning
 To determine the power-ratio of the car a simple motion model was fitted to a recorded-dataset (manual driving).
