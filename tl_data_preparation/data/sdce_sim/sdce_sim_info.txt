@@ -1,0 +1,3 @@
+Images saved to SAVE_CAMERA_IMAGES_TO within tl_detector.py
+Image data (according to https://github.com/coldKnight/TrafficLight_Detection-TensorFlowAPI/blob/master/README.md):
+https://drive.google.com/file/d/0B-Eiyn-CUQtxdUZWMkFfQzdObUE/view

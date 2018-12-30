@@ -132,7 +132,7 @@ Our approach:
     - Images from the Bosch-Dataset: https://hci.iwr.uni-heidelberg.de/
 
 **PLEASE NOTE:** 
-- All data-preparation and training is done in the `research` folder of the *Object-Detection-Sources*. 
+- Data-preparation is done in the `tl_data_preparation` folder (`create_tfrecords.ipynb`) and training is done in the `research` folder of the *Object-Detection-Sources*. 
 - Only the frozen graph is copied to the ROS project: `./ros/src/tl_detector/light_classification/models_frozen/*`
 
 Make sure that you have access to CUDA capable GPU (at least for the actual training):
@@ -176,22 +176,28 @@ Should be done on a powerful GPU-enabled machine, like AWS:
 ![Tensorboard finished training][inference_eval]
 
 #### Image extraction
-* **Test lot**: We can extract images from the ROSBAG by starting `roscore` and launching `roslaunch tl_detetor/launch/tl_test.launch` 
+* **Test lot**: We can extract images from the ROSBAG by starting `roscore` and launching `roslaunch tl_detector/launch/tl_test.launch` 
 * **Simulator**: I added a flag `SAVE_CAMERA_IMAGES_TO = None  # '/home/USER/CarND-Capstone/data/tl_test_simulator'` within `tl_detector.py`.
 
 Possible Improvements:
 * Some additional training data from the simulator might be helpful (especially yellow and red)
-* We have to get it compatible to Carla (tensorflow==1.3)
-* Maybe different models for simualator and test-lot:
+
+Compatibility to Carla (tensorflow==1.3) was accomplished using the following configuration:
+- https://github.com/tensorflow/tensorflow.git (v1.3.1)
+- https://github.com/tensorflow/models.git (r1.6.0)
+- https://github.com/google/protobuf/releases/download/v3.0.0/protoc-3.0.0-linux-x86_64.zip (r1.5)
+
+Separate models for simulator (frozen_sim_tf1-3.pb) and test-lot (frozen_real_tf1-3.pb) as well as a generic model (frozen_srb_simon_tf1-3.pb) for both simulator and test lot were trained on corresponding training data.
+The generic model performed sufficiently good so that it was used in both configurations: 
 
 ```
 class TLClassifier(object):
     def __init__(self, is_site):
         # load classifier
         if is_site:
-            model = 'models_frozen/ssdv2tl_srb/frozen_inference_graph.pb'
+            model = 'models_frozen/ssdv2tl_srb/frozen_srb_simon_tf1-3.pb'
         else:
-            model = 'models_frozen/ssdv2tl_srb/frozen_inference_graph.pb'
+            model = 'models_frozen/ssdv2tl_srb/frozen_srb_simon_tf1-3.pb'
 ```
 
 #### Test images
