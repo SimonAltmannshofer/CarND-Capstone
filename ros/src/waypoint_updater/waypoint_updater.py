@@ -96,12 +96,12 @@ class WaypointUpdater(object):
         if OVERRIDE_ACCELERATION is False:
             # Use dbw acceleration parameter values (m/s2)
             self.plan_acceleration = rospy.get_param('/dbw_node/accel_limit')
-            self.plan_deceleration = rospy.get_param('/dbw_node/decel_limit') + 1.0  # don't use full potential of
+            self.plan_deceleration = rospy.get_param('/dbw_node/decel_limit') * 0.8  # don't use full potential of
             # decceleration for planning, controller might need some of the potential
         else:
             # Use own acceleration parameter values (m/s2)
             self.plan_acceleration = PLAN_ACCELERATION
-            self.plan_deceleration = PLAN_DECELERATION + 1.0  # don't use full potential of
+            self.plan_deceleration = PLAN_DECELERATION * 0.8  # don't use full potential of
             # decceleration for planning, controller might need some of the potential
 
         # **********************************************************

@@ -56,6 +56,9 @@ class DBWNode(object):
         max_lat_accel = rospy.get_param('~max_lat_accel', 3.)
         max_steer_angle = rospy.get_param('~max_steer_angle', 8.)
 
+        self.decel_limit = decel_limit
+        self.accel_limit = accel_limit
+
         self.steer_pub = rospy.Publisher('/vehicle/steering_cmd',
                                          SteeringCmd, queue_size=1)
         self.throttle_pub = rospy.Publisher('/vehicle/throttle_cmd',
@@ -107,7 +110,6 @@ class DBWNode(object):
         # lowpass filter
         self.velocity_filt = LowPassFilter(0.1, 1.0/50.0)
         self.acceleration_filt = LowPassFilter(0.1, 1.0 / 50.0)
-        self.desired_velocity_filt = LowPassFilter(0.06, 1.0 / 50.0)
         self.throttle_filt = LowPassFilter(0.06, 1.0 / 50.0)
         self.brake_filt = LowPassFilter(0.06, 1.0 / 50.0)
 
@@ -121,6 +123,7 @@ class DBWNode(object):
         self.last_loop = None
         self.linear_velocity_old = None
         self.current_acceleration = None
+        self.desired_velocity_old = 0.0
 
         self.dbw_ready = False
         self.acc_ready = False
@@ -189,32 +192,31 @@ class DBWNode(object):
             else:
                 self.current_acceleration = 0.0
 
-            # filter desired velocity
-            if self.desired_linear_velocity is None:
-                desired_filtered_velocity = 0.0
-            else:
-                # desired_filtered_velocity = self.desired_velocity_filt.filt(self.desired_linear_velocity)
-		desired_filtered_velocity = self.desired_linear_velocity
-
             if self.autopilot_ready():
-                TotalWheelTorque, steering, v_d_des = self.controller.control(desired_filtered_velocity,
+                # rate limiter for velocity
+                desired_velocity_change = self.desired_linear_velocity - self.desired_velocity_old
+                allowed_velocity_change = max(min(self.accel_limit * dt, desired_velocity_change),
+                                                  self.decel_limit*dt)
+                self.desired_velocity_old = self.desired_velocity_old + allowed_velocity_change
+
+                total_wheel_torque, steering, v_d_des = self.controller.control(self.desired_velocity_old,
                                                              self.desired_angular_velocity,
                                                              self.current_linear_velocity,
                                                              self.current_acceleration,
                                                              now - self.last_loop)
 
-                if TotalWheelTorque > 0:
+                if total_wheel_torque > 0:
                     # accelerate or coast along at constant speed
                     brake = 0.0
-                    throttle = TotalWheelTorque/P_THROTTLE
+                    throttle = total_wheel_torque/P_THROTTLE
 
-                elif TotalWheelTorque > -100: # -self.brake_deadband*P_THROTTLE:
+                elif total_wheel_torque > -300: # -self.brake_deadband*P_THROTTLE:
                     # a small deadband to avoid braking while coasting
-                    if desired_filtered_velocity <= 0:
+                    if self.desired_linear_velocity <= 1.0:
                         # minimum braking torque in case of a stop
                         brake = CREEPING_TORQUE
-			# reset controller when standing
-			self.controller.reset()
+                        # reset controller when standing
+                        # self.controller.reset()
                     else:
                         brake = 0.0
                     # of course we do not step on the gas while braking
@@ -225,31 +227,31 @@ class DBWNode(object):
                     # SIMULATOR: fitted coefficient between throttle and acceleration
                     if self.desired_linear_velocity <= 0.1 and self.current_linear_velocity <= 1.0:
                         brake = CREEPING_TORQUE
-			# reset controller when standing
-			self.controller.reset()
+                        # reset controller when standing
+                        self.controller.reset()
                     else:
                         # mass * acceleration = force | force = torque / radius
-                        brake = - TotalWheelTorque/P_BRAKE
+                        brake = - total_wheel_torque/P_BRAKE
 
                     throttle = 0.0
 
-		# throttle = self.throttle_filt.filt(throttle)
-		# brake = self.brake_filt.filt(brake)
+                # throttle = self.throttle_filt.filt(throttle)
+                # brake = self.brake_filt.filt(brake)
                 self.publish(throttle, brake, steering)
 
             else:
                 # do not publish drive-by-wire commands if we are driving manually
                 self.controller.reset()
-		v_d_des = 0.0
-		throttle = 0.0
-		brake = 0.0
+                v_d_des = 0.0
+                throttle = 0.0
+                brake = 0.0
 
             if RECORD_CSV:
                 self.csv_data['v_d'] = self.current_acceleration
-                self.csv_data['v_des'] = desired_filtered_velocity
-		self.csv_data['v_d_des'] = v_d_des
-		self.csv_data['throttle_des'] = throttle
-		self.csv_data['brake_des'] = brake
+                self.csv_data['v_des'] = self.desired_velocity_old
+                self.csv_data['v_d_des'] = v_d_des
+                self.csv_data['throttle_des'] = throttle
+                self.csv_data['brake_des'] = brake
                 if RECORD_TIME_TRIGGERED:
                     self.csv_data['time'] = now
                     self.csv_writer.writerow(self.csv_data)

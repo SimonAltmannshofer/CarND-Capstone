@@ -32,10 +32,10 @@ class Controller(object):
         # 1st stage: maps velocity_error to desired_acceleration
         self.velocity_ctr = PID(3.0,  0.24,  0.0,     decel_limit, accel_limit)
         # 2nd stage: maps acceleration_error to throttle
-        self.acceleration_ctr = PID(670, 0.0, 0.0,     -5.0, 1.0)
+        self.acceleration_ctr = PID(300, 0.0, 0.0, -200000, 2200)
 
         # filter for steering (steering is calculated by inverse kinematics)
-        self.steering_filt = LowPassFilter(0.25, 1.0/50.0)
+        # self.steering_filt = LowPassFilter(0.25, 1.0/50.0)
 
         # remember last desired acceleration for jerk-calculation
         self.a_des_old = None
@@ -53,7 +53,7 @@ class Controller(object):
 
         # steering controller followed by filter
         steering = self.steering_ctr.get_steering(desired_velocity, angular_velocity, current_velocity)
-        steering = self.steering_filt.filt(steering)
+        # steering = self.steering_filt.filt(steering)
 
         # Controller A:
         # TotalWheelTorque = self.throttle_ctr.step(linear_velocity - current_velocity, dt)
@@ -67,7 +67,7 @@ class Controller(object):
 
         # rate limiter
         a_delta = a_des - self.a_des_old
-        a_delta = max(min(JERK_MAX, a_delta), JERK_MIN)
+        a_delta = max(min(JERK_MAX*dt, a_delta), JERK_MIN*dt)
         a_des = self.a_des_old + a_delta
         # saturation
         a_des = max(min(self.velocity_ctr.max, a_des), self.velocity_ctr.min)
