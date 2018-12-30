@@ -34,7 +34,7 @@ that we have created in the `__init__` function.
 '''
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
-RECORD_CSV = False  # write states and actor-values to a csv-file
+RECORD_CSV = True  # write states and actor-values to a csv-file
 RECORD_TIME_TRIGGERED = False  # if True one row will be written in each dbw-cycle, otherwise upon cur-velocity-callback
 CREEPING_TORQUE = 800  # minimum braking torque during standstill (avoid creeping)
 P_THROTTLE = 2000  # engine power factor [Nm/1]: torque = P_THROTTLE * throttle
@@ -121,7 +121,6 @@ class DBWNode(object):
         self.desired_linear_velocity = None
         self.desired_angular_velocity = None
         self.last_loop = None
-        self.linear_velocity_old = None
         self.current_acceleration = None
         self.desired_velocity_old = 0.0
 
@@ -193,13 +192,7 @@ class DBWNode(object):
                 self.current_acceleration = 0.0
 
             if self.autopilot_ready():
-                # rate limiter for velocity
-                desired_velocity_change = self.desired_linear_velocity - self.desired_velocity_old
-                allowed_velocity_change = max(min(self.accel_limit * dt, desired_velocity_change),
-                                                  self.decel_limit*dt)
-                self.desired_velocity_old = self.desired_velocity_old + allowed_velocity_change
-
-                total_wheel_torque, steering, v_d_des = self.controller.control(self.desired_velocity_old,
+                total_wheel_torque, steering, v_d_des = self.controller.control(self.desired_linear_velocity,
                                                              self.desired_angular_velocity,
                                                              self.current_linear_velocity,
                                                              self.current_acceleration,
@@ -248,7 +241,7 @@ class DBWNode(object):
 
             if RECORD_CSV:
                 self.csv_data['v_d'] = self.current_acceleration
-                self.csv_data['v_des'] = self.desired_velocity_old
+                self.csv_data['v_des'] = self.desired_linear_velocity
                 self.csv_data['v_d_des'] = v_d_des
                 self.csv_data['throttle_des'] = throttle
                 self.csv_data['brake_des'] = brake
