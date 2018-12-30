@@ -132,7 +132,7 @@ Our approach:
     - Images from the Bosch-Dataset: https://hci.iwr.uni-heidelberg.de/
 
 **PLEASE NOTE:** 
-- All data-preparation and training is done in the `research` folder of the *Object-Detection-Sources*. 
+- Data-preparation is done in the `tl_data_preparation` folder (`create_tfrecords.ipynb`) and training is done in the `research` folder of the *Object-Detection-Sources*. 
 - Only the frozen graph is copied to the ROS project: `./ros/src/tl_detector/light_classification/models_frozen/*`
 
 Make sure that you have access to CUDA capable GPU (at least for the actual training):
