@@ -181,17 +181,23 @@ Should be done on a powerful GPU-enabled machine, like AWS:
 
 Possible Improvements:
 * Some additional training data from the simulator might be helpful (especially yellow and red)
-* We have to get it compatible to Carla (tensorflow==1.3)
-* Maybe different models for simualator and test-lot:
+
+Compatibility to Carla (tensorflow==1.3) was accomplished using the following configuration:
+- https://github.com/tensorflow/tensorflow.git (v1.3.1)
+- https://github.com/tensorflow/models.git (r1.6.0)
+- https://github.com/google/protobuf/releases/download/v3.0.0/protoc-3.0.0-linux-x86_64.zip (r1.5)
+
+Separate models for simulator (frozen_sim_tf1-3.pb) and test-lot (frozen_real_tf1-3.pb) as well as a generic model (frozen_srb_simon_tf1-3.pb) for both simulator and test lot were trained on corresponding training data.
+The generic model performed sufficiently good so that it was used in both configurations: 
 
 ```
 class TLClassifier(object):
     def __init__(self, is_site):
         # load classifier
         if is_site:
-            model = 'models_frozen/ssdv2tl_srb/frozen_inference_graph.pb'
+            model = 'models_frozen/ssdv2tl_srb/frozen_srb_simon_tf1-3.pb'
         else:
-            model = 'models_frozen/ssdv2tl_srb/frozen_inference_graph.pb'
+            model = 'models_frozen/ssdv2tl_srb/frozen_srb_simon_tf1-3.pb'
 ```
 
 #### Test images
