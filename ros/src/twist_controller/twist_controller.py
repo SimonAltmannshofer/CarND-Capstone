@@ -12,12 +12,13 @@ JERK_MIN = -10.0
 class Controller(object):
     def __init__(self,
                  wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle,
-                 decel_limit, accel_limit, r, m, p, d):
+                 decel_limit, accel_limit, r, m, p_throttle, p_brake, d):
 
         # constants
         self.r = r  # wheel radius [m]
         self.m = m  # total vehicle mass [kg]
-        self.p = p  # engine power factor [Nm/1]
+        self.p_throttle = p_throttle  # engine power factor [Nm/1]
+        self.p_brake = p_brake  # brake power ratio [Nm/Nm]
         self.d = d  # velocity dependant resistance  [N/(m/s)]
         self.decel_limit = decel_limit
 
@@ -29,9 +30,9 @@ class Controller(object):
 
         # Controller B currently in use: cascaded PID controllers with feed-forward
         # 1st stage: maps velocity_error to desired_acceleration
-        self.velocity_ctr = PID(3.34,  0.195,  0.0,     decel_limit, accel_limit)
+        self.velocity_ctr = PID(3.0,  0.24,  0.0,     decel_limit, accel_limit)
         # 2nd stage: maps acceleration_error to throttle
-        self.acceleration_ctr = PID(0.2, 0.0, 0.0,     -5.0, 1.0)
+        self.acceleration_ctr = PID(670, 0.0, 0.0,     -5.0, 1.0)
 
         # filter for steering (steering is calculated by inverse kinematics)
         self.steering_filt = LowPassFilter(0.25, 1.0/50.0)
@@ -55,14 +56,14 @@ class Controller(object):
         steering = self.steering_filt.filt(steering)
 
         # Controller A:
-        # throttle = self.throttle_ctr.step(linear_velocity - current_velocity, dt)
+        # TotalWheelTorque = self.throttle_ctr.step(linear_velocity - current_velocity, dt)
 
         # Controller B: cascaded velocity and acceleration control with feed-forward
         a_des = self.velocity_ctr.step(desired_velocity - current_velocity, dt)
 
         # when stopping
-        if desired_velocity == 0.0 and 1e-4 < current_velocity < 1.0:
-            a_des = max(-2, self.decel_limit)
+        # if desired_velocity == 0.0 and 1e-4 < current_velocity < 1.0:
+        #     a_des = max(-2, self.decel_limit)
 
         # rate limiter
         a_delta = a_des - self.a_des_old
@@ -73,9 +74,9 @@ class Controller(object):
         self.a_des_old = a_des
 
         # feed forward control
-        throttle_FF = self.r/self.p*(self.m*a_des + self.d*current_velocity)
+        TotalWheelTorque_FF = self.r*(self.m*a_des + self.d*current_velocity)
         # feed back control
-        throttle_FB = self.acceleration_ctr.step(a_des - current_accel, dt)
-        throttle = 1*throttle_FF + 1*throttle_FB
+        TotalWheelTorque_FB = self.acceleration_ctr.step(a_des - current_accel, dt)
+        TotalWheelTorque = 1*TotalWheelTorque_FF + 1*TotalWheelTorque_FB
 
-        return throttle, steering
+        return TotalWheelTorque, steering, a_des

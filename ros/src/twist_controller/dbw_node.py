@@ -37,8 +37,9 @@ ONE_MPH = 0.44704
 RECORD_CSV = False  # write states and actor-values to a csv-file
 RECORD_TIME_TRIGGERED = False  # if True one row will be written in each dbw-cycle, otherwise upon cur-velocity-callback
 CREEPING_TORQUE = 800  # minimum braking torque during standstill (avoid creeping)
-P_THROTTLE = 2200  # engine power factor [Nm/1]: torque = P_THROTTLE * throttle
-D_RESIST = 140  # velocity dependant resistance [N/(m/s)]
+P_THROTTLE = 2000  # engine power factor [Nm/1]: torque = P_THROTTLE * throttle
+D_RESIST = 110  # velocity dependant resistance [N/(m/s)]
+P_BRAKE = 1.0  # brake factor [Nm/Nm]
 
 class DBWNode(object):
     def __init__(self):
@@ -73,10 +74,10 @@ class DBWNode(object):
         # Create controller object
         min_speed = 0.1
         self.controller = Controller(wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle,
-                                     decel_limit, accel_limit, wheel_radius, self.mass, P_THROTTLE, D_RESIST)
+                                     decel_limit, accel_limit, wheel_radius, self.mass, P_THROTTLE, P_BRAKE, D_RESIST)
 
         # optional logging to a csv-file
-        self.csv_fields = ['time', 'x', 'y', 'v_raw', 'v', 'v_d', 'a', 'v_des', 'a_des', 'throttle', 'brake', 'steer']
+        self.csv_fields = ['time', 'x', 'y', 'v_raw', 'v', 'v_d', 'a', 'v_des', 'v_d_des', 'a_des', 'throttle', 'throttle_des', 'brake', 'brake_des', 'steer']
         if RECORD_CSV:
             base_path = os.path.dirname(os.path.abspath(__file__))
             base_path = os.path.dirname(base_path)
@@ -105,7 +106,11 @@ class DBWNode(object):
 
         # lowpass filter
         self.velocity_filt = LowPassFilter(0.1, 1.0/50.0)
-        self.acceleration_filt = LowPassFilter(0.2, 1.0 / 50.0)
+        self.acceleration_filt = LowPassFilter(0.1, 1.0 / 50.0)
+        self.desired_velocity_filt = LowPassFilter(0.06, 1.0 / 50.0)
+        self.throttle_filt = LowPassFilter(0.06, 1.0 / 50.0)
+        self.brake_filt = LowPassFilter(0.06, 1.0 / 50.0)
+
 
         # additional variables
         self.dbw_enabled = False
@@ -146,7 +151,6 @@ class DBWNode(object):
         self.desired_angular_velocity = data.twist.angular.z
 
         if RECORD_CSV:
-            self.csv_data['v_des'] = self.desired_linear_velocity
             self.csv_data['a_des'] = self.desired_angular_velocity
 
     def current_velocity_callback(self, data):
@@ -182,26 +186,35 @@ class DBWNode(object):
                 dt = now - self.last_loop
                 acceleration_raw = (self.current_linear_velocity - self.linear_velocity_old) / dt
                 self.current_acceleration = self.acceleration_filt.filt(acceleration_raw)
-
             else:
                 self.current_acceleration = 0.0
 
+            # filter desired velocity
+            if self.desired_linear_velocity is None:
+                desired_filtered_velocity = 0.0
+            else:
+                # desired_filtered_velocity = self.desired_velocity_filt.filt(self.desired_linear_velocity)
+		desired_filtered_velocity = self.desired_linear_velocity
+
             if self.autopilot_ready():
-                throttle, steering = self.controller.control(self.desired_linear_velocity,
+                TotalWheelTorque, steering, v_d_des = self.controller.control(desired_filtered_velocity,
                                                              self.desired_angular_velocity,
                                                              self.current_linear_velocity,
                                                              self.current_acceleration,
                                                              now - self.last_loop)
 
-                if throttle > 0:
+                if TotalWheelTorque > 0:
                     # accelerate or coast along at constant speed
                     brake = 0.0
+                    throttle = TotalWheelTorque/P_THROTTLE
 
-                elif throttle > -self.brake_deadband:
+                elif TotalWheelTorque > -100: # -self.brake_deadband*P_THROTTLE:
                     # a small deadband to avoid braking while coasting
-                    if self.desired_linear_velocity <= 0:
+                    if desired_filtered_velocity <= 0:
                         # minimum braking torque in case of a stop
                         brake = CREEPING_TORQUE
+			# reset controller when standing
+			self.controller.reset()
                     else:
                         brake = 0.0
                     # of course we do not step on the gas while braking
@@ -210,22 +223,33 @@ class DBWNode(object):
                 else:
                     # we are decelerating (braking)
                     # SIMULATOR: fitted coefficient between throttle and acceleration
-                    if self.desired_angular_velocity <= 0.1 and self.current_linear_velocity <= 1.0:
+                    if self.desired_linear_velocity <= 0.1 and self.current_linear_velocity <= 1.0:
                         brake = CREEPING_TORQUE
+			# reset controller when standing
+			self.controller.reset()
                     else:
                         # mass * acceleration = force | force = torque / radius
-                        brake = - P_THROTTLE * throttle
+                        brake = - TotalWheelTorque/P_BRAKE
 
                     throttle = 0.0
 
+		# throttle = self.throttle_filt.filt(throttle)
+		# brake = self.brake_filt.filt(brake)
                 self.publish(throttle, brake, steering)
 
             else:
                 # do not publish drive-by-wire commands if we are driving manually
                 self.controller.reset()
+		v_d_des = 0.0
+		throttle = 0.0
+		brake = 0.0
 
             if RECORD_CSV:
-                self.csv_data['v_d'] = accel
+                self.csv_data['v_d'] = self.current_acceleration
+                self.csv_data['v_des'] = desired_filtered_velocity
+		self.csv_data['v_d_des'] = v_d_des
+		self.csv_data['throttle_des'] = throttle
+		self.csv_data['brake_des'] = brake
                 if RECORD_TIME_TRIGGERED:
                     self.csv_data['time'] = now
                     self.csv_writer.writerow(self.csv_data)
