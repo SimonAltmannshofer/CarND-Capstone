@@ -187,7 +187,7 @@ Compatibility to Carla (tensorflow==1.3) was accomplished using the following co
 - https://github.com/tensorflow/models.git (r1.6.0)
 - https://github.com/google/protobuf/releases/download/v3.0.0/protoc-3.0.0-linux-x86_64.zip (r1.5)
 
-Separate models for simulator (frozen_sim_tf1-3.pb) and test-lot (frozen_real_tf1-3.pb) as well as a generic model (frozen_srb_simon_tf1-3.pb) for both simulator and test lot were trained on corresponding training data.
+Separate models (Inception V2 Coco) for simulator (frozen_sim_tf1-3.pb) and test-lot (frozen_real_tf1-3.pb) as well as a generic model (frozen_srb_simon_tf1-3.pb) for both simulator and test lot were trained on corresponding training data.
 The generic model performed sufficiently good so that it was used in both configurations: 
 
 ```
@@ -203,7 +203,30 @@ class TLClassifier(object):
 #### Test images
 Images from the ROSBAG were used for testing the inference in the real-world-scenario:
 
+**Classificator trained on real and simulated image data**
+
 ![Testlot Inference 1][testlot1]
 
-
 ![Testlot Inference 2][testlot2]
+
+**Classificator (Inception V2 Coco) trained on real image data**
+
+![Testlot_inc_v2_coco_real_1](imgs/test_tl_detector/inc_v2_coco_real/left0000.png?raw=true "Testlot_inc_v2_coco_real_1")
+
+![Testlot_inc_v2_coco_real_2](imgs/test_tl_detector/inc_v2_coco_real/left0003.png?raw=true "Testlot_inc_v2_coco_real_1")
+
+**Classificator (Inception V2 Coco) trained on simulated image data**
+
+![Testlot_inc_v2_coco_sim_1](imgs/test_tl_detector/inc_v2_coco_sim/left0000.png?raw=true "Testlot_inc_v2_coco_sim_1")
+
+![Testlot_inc_v2_coco_sim_2](imgs/test_tl_detector/inc_v2_coco_sim/left0003.png?raw=true "Testlot_inc_v2_coco_sim_2")
+
+**Classificator (Inception V2 Coco) trained on real and simulated image data**
+
+![Testlot_inc_v2_coco_srb_1](imgs/test_tl_detector/inc_v2_coco_srb/left0000.png?raw=true "Testlot_inc_v2_coco_srb_1")
+
+![Testlot_inc_v2_coco_srb_2](imgs/test_tl_detector/inc_v2_coco_srb/left0003.png?raw=true "Testlot_inc_v2_coco_srb_2")
+
+
+
+
