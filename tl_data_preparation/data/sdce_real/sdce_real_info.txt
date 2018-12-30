@@ -1,0 +1,1 @@
+Images extracted from the ROSBAG just_traffic_light.bag by starting `roscore` and launching `roslaunch tl_detector/launch/tl_test.launch`

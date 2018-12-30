@@ -176,7 +176,7 @@ Should be done on a powerful GPU-enabled machine, like AWS:
 ![Tensorboard finished training][inference_eval]
 
 #### Image extraction
-* **Test lot**: We can extract images from the ROSBAG by starting `roscore` and launching `roslaunch tl_detetor/launch/tl_test.launch` 
+* **Test lot**: We can extract images from the ROSBAG by starting `roscore` and launching `roslaunch tl_detector/launch/tl_test.launch` 
 * **Simulator**: I added a flag `SAVE_CAMERA_IMAGES_TO = None  # '/home/USER/CarND-Capstone/data/tl_test_simulator'` within `tl_detector.py`.
 
 Possible Improvements:
