@@ -205,5 +205,20 @@ Images from the ROSBAG were used for testing the inference in the real-world-sce
 
 ![Testlot Inference 1][testlot1]
 
-
 ![Testlot Inference 2][testlot2]
+
+![Testlot_inc_v2_coco_real_1](imgs/test_tl_detector/inc_v2_coco_real/left0000.png?raw=true "Testlot_inc_v2_coco_real_1")
+
+![Testlot_inc_v2_coco_real_2](imgs/test_tl_detector/inc_v2_coco_real/left0003.png?raw=true "Testlot_inc_v2_coco_real_1")
+
+![Testlot_inc_v2_coco_sim_1](imgs/test_tl_detector/inc_v2_coco_sim/left0000.png?raw=true "Testlot_inc_v2_coco_sim_1")
+
+![Testlot_inc_v2_coco_sim_2](imgs/test_tl_detector/inc_v2_coco_sim/left0003.png?raw=true "Testlot_inc_v2_coco_sim_2")
+
+![Testlot_inc_v2_coco_srb_1](imgs/test_tl_detector/inc_v2_coco_srb/left0000.png?raw=true "Testlot_inc_v2_coco_srb_1")
+
+![Testlot_inc_v2_coco_srb_2](imgs/test_tl_detector/inc_v2_coco_srb/left0003.png?raw=true "Testlot_inc_v2_coco_srb_2")
+
+
+
+
