@@ -1,8 +1,8 @@
 # CarND-Capstone Project
 Students: 
-* HM: audi-employee116@udacityenterprise.com
-* TD: audi-employee120@udacityenterprise.com
-* SB: audi-employee123@udacityenterprise.com
+- HM: audi-employee116@udacityenterprise.com
+- TD: audi-employee120@udacityenterprise.com
+- SB: audi-employee123@udacityenterprise.com
 
 [motion_model]: ./docs/motion_model.png
 [velocity_planning]: ./docs/velocity_planning.png
@@ -10,16 +10,33 @@ Students:
 [identification]: ./docs/driving_log_acc_cost_brake.png
 
 [inference_eval]: ./docs/ssdv2tl_simrealbosch-eval.png
-[testlot1]: ./imgs/test_tl_detector/ssdv2_srb/left0000.png
-[testlot2]: ./imgs/test_tl_detector/ssdv2_srb/left0561.png
+[inference_precision]: ./docs/ssdv2tl_simrealbosch-precision.png
+
+[srb_lot]: ./imgs/test_tl_detector/inc_v2_coco_srb/left0000.png
+[srb_sim]: ./imgs/test_tl_detector/inc_v2_coco_srb/left0003.png
+[real_lot]: ./imgs/test_tl_detector/inc_v2_coco_real/left0000.png
+[real_sim]: ./imgs/test_tl_detector/inc_v2_coco_real/left0003.png
+
+[sim_lot]: ./imgs/test_tl_detector/inc_v2_coco_sim/left0000.png
+[sim_sim]: ./imgs/test_tl_detector/inc_v2_coco_sim/left0003.png
+
+Some initial notes before you deploy the project:
+- Due to the terrible performance of the simulators camera-interface we had to add a lot of tweaks. 
+- Not even the Udacity-Workspace is running properly with the camera activated. 
+- It really is the simulator + interface! Even when we do not subscribe to the camera-topic the same lag can be observed!
+- Especially if there are lot's of trees in the vicinity the simulator will take up all CPU resources and the drive-by-wire will spin out of control.
+- The frame-rate for the inference was limited to `LIMIT_CAMERA_FPS = 4` (see `tl_detector.py`) in order to free up some CPU-resources. You might want to increase this on your PC.
+- The `waypoint_updater` will only accept the track-waypoints once. **It will stop at the end of the waypoint-list.** We considered this to be the safe choice and desired behaviour?! 
+
 
 There are several options available for setting up the development environment: 
-* **Windows Host + VBox:** With the simulator running in Windows and ROS running in a Ubuntu VirtualBox. This option was **discarded due to terrible performance**. 
-* **Ubuntu Host:** With the simulator and ROS running in the same OS. Better performance but still some lag with active camera. Difficult to set up the correct (old) versions and dependencies of *Carla*. Used during development.   
-* **Project Workspace:** Webbased Workspace with a 50h limit supplied by Udacity. Will be used for testing compatibility with Carla. Camera can't be used due to terrible-lag.
+- **Windows Host + VBox:** With the simulator running in Windows and ROS running in a Ubuntu VirtualBox. This option was *discarded due to terrible performance*. 
+- **Ubuntu Host:** With the simulator and ROS running in the same OS. Better performance but still some lag with active camera. Difficult to set up the correct (old) versions and dependencies of *Carla*. Used during development.   
+- **Project Workspace:** Webbased Workspace with a 50h limit supplied by Udacity. Will be used for testing compatibility with Carla. Camera can't be used due to terrible-lag.
 
 ## Setting up the Ubuntu Host
-* Stick to the tested versions: Ubuntu 16.04 with ROS Kinetic 
+- Stick to the tested versions: Ubuntu 16.04 with ROS Kinetic 
+- How To install Ubuntu alongside Win10: https://itsfoss.com/install-ubuntu-1404-dual-boot-mode-windows-8-81-uefi/
 
 ### Install ROS: Robot Operating System
 There is a nice guide for the ROS installation for Ubuntu: http://wiki.ros.org/kinetic/Installation/Ubuntu
@@ -45,9 +62,11 @@ Clone the Udacity Project from Git
 
 `git clone https://github.com/udacity/CarND-Capstone.git`
 
-We need to make our python files executable!
+We need to make our python files and shell-scripts executable!
 
 `find /home/YOURUSERNAME/CarND-Capstone/ -type f -iname "*.py" -exec chmod +x {} \;`
+
+`find /home/YOURUSERNAME/CarND-Capstone/ -type f -iname "*.sh" -exec chmod +x {} \;`
 
 ###  Running the ROS project
 ```
@@ -68,18 +87,19 @@ The development was done in the suggested order, some notes regarding the implem
 
 ### Waypoint Updater 
 This node extracts a given number of waypoints ahead of our current location. The velocities of these waypoints are updated in order to get a proper trajectory (time dependant).
-* `update_distances()` pre-computes all distances between the given waypoints to avoid computational overhead during runtime.
-* `closest_waypoint()` finds the closest waypoint to our current position. To speed things up the search starts from the last known waypoint if possible. The search is stopped once the waypoint-distances start increasing again.
-* `next_waypoint()` find the next-waypoint ahead of us:
-    * uses the math from the path-planning-project
-    * transformation from quaternions to yaw-angle: https://stackoverflow.com/questions/5782658/extracting-yaw-from-a-quaternion
-* `publish_final_waypoints()` Identifies stop-waypoints within our waypoint segment
-    * If manual-driving is enabled, all target velocities will be set to the current velocity
-    * In automatic-driving is enabled, `path_to_trajectory()` will be used for velocity-planning.
-* `path_to_trajectory()` Updates the velocities within the waypoint-segment.
-    * A simple velocity profile with constant acceleration/deceleration is used!
-    * The math can be found in the image below. 
-* We added the topic `'/current_waypoint'`: It publishes the closest-waypoint and avoids redundant calculations within the Traffic-Light-Detector.
+- `update_distances()` pre-computes all distances between the given waypoints to avoid computational overhead during runtime.
+- `closest_waypoint()` finds the closest waypoint to our current position. To speed things up the search starts from the last known waypoint if possible. The search is stopped once the waypoint-distances start increasing again.
+- `next_waypoint()` find the next-waypoint ahead of us:
+    - uses the math from the path-planning-project
+    - transformation from quaternions to yaw-angle: https://stackoverflow.com/questions/5782658/extracting-yaw-from-a-quaternion
+- `publish_final_waypoints()` Identifies stop-waypoints within our waypoint segment
+    - If manual-driving is enabled, all target velocities will be set to the current velocity.
+    - If automatic-driving is enabled, `path_to_trajectory()` will be used for velocity-planning.
+- `path_to_trajectory()` Updates the velocities within the waypoint-segment.
+    - A simple velocity profile with constant acceleration/deceleration is used!
+    - A more sophisticated approach like quintic-polynomials does not make sense, because the `waypoint_follower` sends discontinuous velocities anyways ...
+    - The math can be found in the image below. 
+- We added the topic `'/current_waypoint'`: It publishes the closest-waypoint and avoids redundant calculations within the Traffic-Light-Detector.
 
 ![Math used for velocity planning][velocity_planning]
 
@@ -91,7 +111,7 @@ The following Python scripts are used in our implementation:
 * `twist_controller.py`: Initializes and updates all controllers. 
 * `dbw_node.py`: The ROS wrapper 
     * Updates the controllers
-    * In case of negative throttle the actuation is converted to brake-torque in Nm.
+    * In case of a positive torque request the actuation is converted to throttle. (power-factor calibrated by system-identification)
     * A minimum braking torque `CREEPING_TORQUE = 800` is applied while stopping (due to the creeping of the automatic transmission).
     * `RECORD_CSV = True`: A logfile with actuations, velocities and positions is written during manual-driving. This data may be used for system-identification.
 
@@ -102,44 +122,61 @@ The basic idea of the identification is simple:
 ![Motion Model][motion_model]
 
 The motion-model represents the simulator pretty well. Please note that the recorded acceleration is not used during the 
-identification. But this was you get an impression of how noisy the velocity-data actually is.
+identification. But this way you get an impression of how noisy the velocity-data actually is.
 At first it seemed weird that the brake-torque-factor is not equal to 1.0 as suggested by the Udacity-instructions. 
 Upon further investigation the brake-torque-facor must be 1.0 instead of the identified 0.1144. 
-The difference comes probably from a saturation in the car simulator.
+The difference comes probably from a saturation of the brake-torque at ~2300Nm in the car simulator.
 
 ![Recorded vs. predicted][identification]
 
 The identification was done using MATLAB: [mathscript](MATLAB/HM_SystemIdent.m) and this [dataset](MATLAB/driving_log_acc_coast_brake.csv).
 
 #### Longitudinal controller
-The first control design consists of a PID-controller that controls the velocity by adapting the total wheel torque.
+Because the `waypoint_follower` sends us discontinuous desired-velocities, we had to add a rate-limiter for the desired-velocities. 
+The rate limiter uses the configured `max_acceleration` and `max_deceleration`. This way we can "reconstruct" the continuous velocity-profile from our `waypoint_updater`.
 
-The second longitudinal control design consists of:
-- PI-controller for velocity (acceleration as output)
-- Desired acceleration, as well as its gradient (jerk) are limited
-- Two degree of freedom controller for acceleration:
-    - Feedforward control of the acceleration with identified longitudinal dynamics (see above)
-    - PI controller for deviation between desired acceleration and actual acceleration
+We implemented two types of controllers. The simple PID controller is activated by default because we expect a better robustness regarding the unknown model-parameters from *Carla*. 
 
-With this architecture the accelerations are not only limited by the `waypoint_updater` but also by the controller. 
-Especially due to the discrete velocity-changes of the `waypoint_follower` this additional limitation is mandatory. 
+1. The first control design (default) consists of a PID-controller that controls the velocity by adapting the total wheel torque.
+
+2. The second longitudinal control design consists of:
+    - PI-controller for velocity (acceleration as output)
+    - Desired acceleration, as well as its gradient (jerk) are limited
+    - Two degree of freedom controller for acceleration:
+        - Feedforward control of the acceleration with identified longitudinal dynamics (see above)
+        - PI controller for deviation between desired acceleration and actual acceleration
 
 ![Longitudinal Controller][controller_long]
 
-The second concept needs a good model of the car as well as the vehicle acceleration which can only be computed from 
+The second concept needs a good model of the car as well as the vehicle acceleration, which can only be computed from 
 the given velocity. 
 Due to these shortcomings we use the first controller concept.
 
-### Object Detection
+### Traffic Light Detection
+This node has to detect the state of traffic-lights based on camera-images. In case of a red traffic-light it has to identify the stop-waypoint closest to the stop-line.
+It will publish these stop-waypoints, the `waypoint_updater` will then use this information for the trajectory-planning.
+
 Our approach:
-- Uses the _tensorflow object_detection API_ 
-- Transfer learning using the _ssd_inception_v2_coco_ model from the model-zoo
+- Uses the *tensorflow object_detection API* 
+- Transfer learning using the *ssd_inception_v2_coco* model from the model-zoo
 - We combine three training data-sets:
     - Labeled simulator images
     - Labeled test-lot images (extracted from the ROSBAG)
-    - Images from the Bosch-Dataset: https://hci.iwr.uni-heidelberg.de/
+    - Images from the Training Bosch-Dataset: https://hci.iwr.uni-heidelberg.de/
+   
+The most important methods and features of the `tl_detector`:
+- `find_stop_waypoint()` will find the optimal stop-waypoints for each traffic light, also considering the vehicle length. 
+- `next_traffic_light()` finds the upcoming traffic-light and handles some tolerances necessary for safe stopping.
+- `image_cb()` retrieves a new camera image
+    - The frame-rate will be limited to `LIMIT_CAMERA_FPS = 4` you might increase this on a more potent PC. Inference takes 18ms on the CPU on our best machine ...
+    - The Duty-Cycle will be kept below `MAX_DUTY_CYCLE = 0.75`
+    - The `tl_classifier.py` is called for inference. There a tensorflow session is kept open to speed things up. 
+- `current_waypoint_cb()` 
+    - Directly gives us the current car-waypoint to avoid overhead.
+    - If `FORCE_RED_LIGHT_SECONDS` is set, the car will stop at each stop-line regardless of the traffic-light-state (used for debugging). 
 
-**PLEASE NOTE:** 
+#### Tutorial for Training
+Please note:
 - Data-preparation is done in the `tl_data_preparation` folder (`create_tfrecords.ipynb`) and training is done in the `research` folder of the *Object-Detection-Sources*. 
 - Only the frozen graph is copied to the ROS project: `./ros/src/tl_detector/light_classification/models_frozen/*`
 
@@ -153,24 +190,21 @@ tf.test.is_gpu_available()
 The first two links are a guide of how to set up your environment and your training-pipeline for Traffic-Light-Classification, some additional helpful links follow:
 - [Tutorial for traffic light classifier](https://becominghuman.ai/traffic-light-detection-tensorflow-api-c75fdbadac62): This guides us through the training and evaluation!
 - [Source code for traffic light classifier](https://github.com/coldKnight/TrafficLight_Detection-TensorFlowAPI): The source code belonging to the guide above.
-- [Tensorflow sources](https://github.com/tensorflow/tensorflow)
-- [Install object_detection](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/installation.md)
-- [Tensorflow model zoo](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/detection_model_zoo.md)
-- [Up to date object_detection pipeline configuration](https://github.com/developmentseed/label-maker/blob/94f1863945c47e1b69fe0d6d575caa0b42aa8d63/examples/utils/ssd_inception_v2_coco.config)
-- [Running local training job](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_locally.md#running-locally)
-- [LabelImg Tool](https://github.com/tzutalin/labelImg)
-- [Howto TFRecords from VOC](https://github.com/tensorflow/models/blob/4f32535fe7040bb1e429ad0e3c948a492a89482d/research/object_detection/g3doc/preparing_inputs.md)
-
+    - [Tensorflow sources](https://github.com/tensorflow/tensorflow) Tensorflow sources are required for the *object detection API*
+    - [Install object_detection](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/installation.md) The *object detection API* has to be checked out into `../tensorflow/models/`
+    - [Tensorflow model zoo](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/detection_model_zoo.md) Here we can download trained inference models
+    - [LabelImg Tool](https://github.com/tzutalin/labelImg) A GUI for labeling additional images (boxes + labels)
 
 #### Training Data
-In order to merge our datasets (simulator, lot and Bosch) we have to do some pre-processing, have a look at `create_tfrecords.ipynb`
-* The Bosch Dataset is huge (about 17GB). I only included a small subset, that I converted to jpg. 
-    * You should directly load the `train_good.yaml` instead of `train.yaml` and skip the according sections within the juypter notebook. 
-    * Continue with `def get_bosch_record_with_relative_path`
-
+In order to merge our datasets (simulator, lot and Bosch) we have to do some pre-processing, have a look at [create_tfrecords.ipynb](tl_data_preparation/create_tfrecords.ipynb)
+- The submission does not include any training-data due to its size. (The Bosch Dataset has about 17GB). 
+- In the [data](tl_data_preparation/data) folder you will find directories for the training-sets. Each directory contains an `*info.txt` with download links.
+    
 #### Training and freezing of the inference model:
 
-**PLEASE NOTE:** The current version of the training script `training_srb.sh` was written for the newer Object-Detection-API using `model_main.py`. The older versions use `train.py` like in the linked-blog-post-guide.
+**PLEASE NOTE:** Different versions of the *object detection API* use different scripts for training. The shell-script [training_srb.sh](tl_training/training_srb.sh) has to be changed accordingly:
+- `model_main.py` for newer *tensorflow* versions like v1.12 
+- The older versions like *tensorflow* v1.3 on *Carla* use `train.py`.
 
 Should be done on a powerful GPU-enabled machine, like AWS:
 - Probably activate the virtual environment, Python2 makes less trouble with object-detection: `source ./venv2/bin/activate`
@@ -181,18 +215,19 @@ Should be done on a powerful GPU-enabled machine, like AWS:
 - Connect with Webbrowser and ... wait ... for the first model checkpoint and evaluation run (probably 15min)
 - Freeze the final model: `python object_detection/export_inference_graph.py --pipeline_config_path=models/ssdv2tl_srb_v1_3/pipeline.config --trained_checkpoint_prefix=models/ssdv2tl_srb_v1_3/train_0/model.ckpt-10000 --output_directory=models/ssdv2tl_srb_v1_3/frozen/`
 
+Here some impressions from the *tensorboard* during training:
+
 ![Tensorboard finished training][inference_eval]
 
+![Tensorboard final precision][inference_precision]
+
 #### Image extraction
-* **Test lot**: We can extract images from the ROSBAG by starting `roscore` and launching `roslaunch tl_detector/launch/tl_test.launch` 
-* **Simulator**: I added a flag `SAVE_CAMERA_IMAGES_TO = None  # '/home/USER/CarND-Capstone/data/tl_test_simulator'` within `tl_detector.py`.
+- **Test lot**: We can extract images from the ROSBAG by starting `roscore` and launching `roslaunch tl_detector/launch/tl_test.launch` 
+- **Simulator**: We added a flag `SAVE_CAMERA_IMAGES_TO = None  # '/home/USER/CarND-Capstone/data/tl_test_simulator'` within `tl_detector.py`.
 
-Possible Improvements:
-* Some additional training data from the simulator might be helpful (especially yellow and red)
-
-Compatibility to Carla (tensorflow==1.3) was accomplished using the following configuration:
-- https://github.com/tensorflow/tensorflow.git (v1.3.1)
-- https://github.com/tensorflow/models.git (r1.6.0)
+**Compatibility to Carla** (tensorflow==1.3) was accomplished using the following configuration:
+- https://github.com/tensorflow/tensorflow.git (Branch v1.3.1)
+- https://github.com/tensorflow/models.git (Branch r1.6.0)
 - https://github.com/google/protobuf/releases/download/v3.0.0/protoc-3.0.0-linux-x86_64.zip (r1.5)
 
 Separate models (Inception V2 Coco) for simulator (frozen_sim_tf1-3.pb) and test-lot (frozen_real_tf1-3.pb) as well as a generic model (frozen_srb_simon_tf1-3.pb) for both simulator and test lot were trained on corresponding training data.
@@ -209,31 +244,29 @@ class TLClassifier(object):
 ```
 
 #### Test images
-Images from the ROSBAG were used for testing the inference in the real-world-scenario:
+Images from the ROSBAG were used for testing the inference in the real-world-scenario. The next sections show the inference results of our three trained models. 
+For additional test images have a look at [imgs/test_tl_detector](imgs/test_tl_detector).
 
-**Classificator trained on real and simulated image data**
+##### Classificator (SSD Inception V2 Coco) trained on real and simulated image data (bosch + lot + sim)
+The one used for simulator and test lot:
 
-![Testlot Inference 1][testlot1]
+![universal model on lot image][srb_lot]
 
-![Testlot Inference 2][testlot2]
+![universal model on sim image][srb_sim]
 
-**Classificator (Inception V2 Coco) trained on real image data**
+##### Classificator (SSD Inception V2 Coco) trained on real image data (bosch + lot)
+Not used in our code!
 
-![Testlot_inc_v2_coco_real_1](imgs/test_tl_detector/inc_v2_coco_real/left0000.png?raw=true "Testlot_inc_v2_coco_real_1")
+![real model on lot image][real_lot]
 
-![Testlot_inc_v2_coco_real_2](imgs/test_tl_detector/inc_v2_coco_real/left0003.png?raw=true "Testlot_inc_v2_coco_real_1")
+![real model on sim image][real_sim]
 
-**Classificator (Inception V2 Coco) trained on simulated image data**
+##### Classificator (SSD Inception V2 Coco) trained on simulated image data (sim)
+Not used in our code!
 
-![Testlot_inc_v2_coco_sim_1](imgs/test_tl_detector/inc_v2_coco_sim/left0000.png?raw=true "Testlot_inc_v2_coco_sim_1")
+![simulator model on lot image][sim_lot]
 
-![Testlot_inc_v2_coco_sim_2](imgs/test_tl_detector/inc_v2_coco_sim/left0003.png?raw=true "Testlot_inc_v2_coco_sim_2")
-
-**Classificator (Inception V2 Coco) trained on real and simulated image data**
-
-![Testlot_inc_v2_coco_srb_1](imgs/test_tl_detector/inc_v2_coco_srb/left0000.png?raw=true "Testlot_inc_v2_coco_srb_1")
-
-![Testlot_inc_v2_coco_srb_2](imgs/test_tl_detector/inc_v2_coco_srb/left0003.png?raw=true "Testlot_inc_v2_coco_srb_2")
+![simulator model on sim image][sim_sim]
 
 
 

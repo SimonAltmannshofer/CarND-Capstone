@@ -23,6 +23,7 @@ CENTER_TO_BUMPER = 2.5
 FORCE_RED_LIGHT_SECONDS = 0.0  # Force stop at every stop-line for at least XX seconds
 VERBOSE = False  # increased debug messages
 
+
 class TLDetector(object):
     def __init__(self):
         rospy.init_node('tl_detector')
@@ -51,26 +52,32 @@ class TLDetector(object):
         self.light_classifier = TLClassifier(self.config['is_site'])
         self.listener = tf.TransformListener()
 
+        # traffic light state change will only be accepted after multiple detections
         self.state = TrafficLight.UNKNOWN
         self.last_state = TrafficLight.UNKNOWN
-        self.last_frame = rospy.get_time()
-        self.last_finish = rospy.get_time()
-        self.last_publish = rospy.get_time() - 1.0
-
-        self.busy = False
         self.last_stop_wp = -1
         self.state_count = 0
 
-        self.is_ready = False
+        # used for limiting the inference frame-rate
+        self.last_frame = rospy.get_time()
+        self.last_finish = rospy.get_time()
+        self.last_publish = rospy.get_time() - 1.0
+        self.busy = False
 
+        # states used for the forced stopping at each stop-line (debug-option)
         self.time_forced_stop = rospy.get_time()
         self.forced_stop_wp = -1
 
         # counter for saving camera images
         self.k = 0
 
+        # flag is True if initialization finished and all required topics have arrived
+        self.is_ready = False
+
+        # list of waypoints ahead of each stop-line
         self.stop_line_waypoints = None
 
+        # subscribe to required topics
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb)
         rospy.Subscriber('/image_color', Image, self.image_cb, queue_size=1)
@@ -83,6 +90,7 @@ class TLDetector(object):
         rospy.spin()
 
     def current_waypoint_cb(self, msg):
+        """ update the current car-waypoint, additional logic for forced stop at each stop-line """
         self.car_waypoint = msg.data
 
         if FORCE_RED_LIGHT_SECONDS > 0 and self.ready():
@@ -146,6 +154,7 @@ class TLDetector(object):
         """
         now = rospy.get_time()
 
+        # limit inception frame rate and avoid very high duty cycles (otherwise the dbw might spin out of control)
         if self.busy:
             rospy.logwarn("traffic light detection: SKIP still busy with last frame")
             self.publish(force=True)
@@ -167,12 +176,8 @@ class TLDetector(object):
         # get the next traffic light index and waypoint
         light_index, light_wp = self.next_traffic_light()
 
-        '''
-        Publish upcoming red lights at camera frequency.
-        Each predicted state has to occur `STATE_COUNT_THRESHOLD` number
-        of times till we start using it. Otherwise the previous stable state is
-        used.
-        '''
+        # Publish upcoming red lights at camera frequency.
+        # Each predicted state has to occur `STATE_COUNT_THRESHOLD` number of times
         if self.state != state:
             self.state_count = 0
             self.state = state
@@ -201,8 +206,9 @@ class TLDetector(object):
             return False
 
     def find_stop_waypoint(self, x, y):
+        """ find according stop-waypoint given stop-coordinates, considers vehicle length"""
         # initialize search
-        dmin = 1e12
+        d_min = 1e12
         index = -1
 
         def distance(i_wp1, i_wp2):
@@ -217,8 +223,8 @@ class TLDetector(object):
             dy = wp.pose.pose.position.y - y
             d2 = dx * dx + dy * dy
 
-            if d2 < dmin:
-                dmin = d2
+            if d2 < d_min:
+                d_min = d2
                 index = k
 
         # search backwards in order to stop before and not on the stop-line
@@ -243,8 +249,7 @@ class TLDetector(object):
         return self.light_classifier.get_classification(cv_image)
 
     def next_traffic_light(self):
-
-        # find the closest visible traffic light (if one exists)
+        """ find the closest visible traffic light (if one exists) """
         if self.ready():
             # copy current waypoint to be safe in case of a waypoint interrupt/callback
             car_waypoint = self.car_waypoint
@@ -253,7 +258,7 @@ class TLDetector(object):
             light_wp = -1
             numel_ahead = len(self.waypoints)
             for index, wp in enumerate(self.stop_line_waypoints):
-                if wp > car_waypoint-NUM_WP_STOP_AFTER_STOPLINE and wp-car_waypoint < numel_ahead:
+                if wp >= car_waypoint-NUM_WP_STOP_AFTER_STOPLINE and wp-car_waypoint < numel_ahead:
                     light_wp = wp
                     light_index = index
                     numel_ahead = wp - car_waypoint
@@ -261,6 +266,7 @@ class TLDetector(object):
             return light_index, light_wp
 
     def ready(self):
+        """ signals True if initialization is complete """
         if not self.is_ready:
             # check if all callbacks arrived
             waypoints_okay = self.waypoints is not None and self.stop_line_waypoints is not None

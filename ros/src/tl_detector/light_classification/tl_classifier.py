@@ -6,7 +6,6 @@ import time
 import os
 
 
-
 class TLClassifier(object):
     def __init__(self, is_site):
         # load classifier

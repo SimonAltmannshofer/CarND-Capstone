@@ -35,6 +35,7 @@ DEBUG_WAYPOINTS_CSV = False  # Activate/Deactivate node debug outputs via csv (T
 DEBUG_WAYPOINTS_LOG = False  # Activate/Deactivate node debug outputs via console (True, False)
 MIN_WAYPOINT_SPEED_ACC = 0.1  # Minimum speed for a waypoint during acceleration (avoid deadlocks)
 
+
 # Class definition for the waypoint_updater node
 class WaypointUpdater(object):
 
