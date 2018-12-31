@@ -30,7 +30,7 @@ class Controller(object):
         self.steering_ctr = YawController(wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle)
 
         # Controller A not used anymore: tuned PID controller for the torque
-        self.torque_ctl = PID(600, 60, 3, decel_limit*r*m*1.5, p_throttle)
+        self.torque_ctl = PID(500, 50, 3, decel_limit*r*m*1.5, p_throttle)
 
         # Controller B currently in use: cascaded PID controllers with feed-forward
         # 1st stage: maps velocity_error to desired_acceleration

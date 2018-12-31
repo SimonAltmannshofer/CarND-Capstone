@@ -15,29 +15,38 @@ with open('./records/driving_log.csv', 'rb') as csvfile:
                 exec(variables[i] + ".append(" + row[i] + ")")
             count += 1
 
-plt.subplot(411)
+plt.subplot(511)
 plt.plot(throttle, label='throttle')
 plt.hold
 plt.plot(throttle_des, label='throttle_des')
 plt.grid(True)
 plt.legend()
 
-plt.subplot(412)
+plt.subplot(512)
 plt.plot(brake, label='brake')
 plt.hold
 plt.plot(brake_des, label='brake_des')
 plt.legend()
+plt.grid(True)
 
-plt.subplot(413)
+
+plt.subplot(513)
+plt.plot(torque, label='torque')
+plt.grid(True)
+plt.legend()
+
+plt.subplot(514)
 plt.plot(v, label='v')
 plt.hold
 plt.plot(v_des, label='v_des')
+plt.grid(True)
 plt.legend()
 
-plt.subplot(414)
+plt.subplot(515)
 plt.plot(v_d, label='v_d')
 plt.hold
 plt.plot(v_d_des, label='v_d_des')
+plt.grid(True)
 plt.legend()
 
 plt.show()

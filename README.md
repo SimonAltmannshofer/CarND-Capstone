@@ -101,15 +101,20 @@ The basic idea of the identification is simple:
 
 ![Motion Model][motion_model]
 
-The motion-model represents the simulator pretty well. Please note that the recorded acceleration is not used during the identification. But this was you get an impression of how noisy the velocity-data actually is.
-It is really weird that the brake-torque-factor is not equal to 1.0 as suggested by the Udacity-instructions. 
+The motion-model represents the simulator pretty well. Please note that the recorded acceleration is not used during the 
+identification. But this was you get an impression of how noisy the velocity-data actually is.
+At first it seemed weird that the brake-torque-factor is not equal to 1.0 as suggested by the Udacity-instructions. 
+Upon further investigation the brake-torque-facor must be 1.0 instead of the identified 0.1144. 
+The difference comes probably from a saturation in the car simulator.
 
 ![Recorded vs. predicted][identification]
 
 The identification was done using MATLAB: [mathscript](MATLAB/HM_SystemIdent.m) and this [dataset](MATLAB/driving_log_acc_coast_brake.csv).
 
 #### Longitudinal controller
-The longitudinal controller consists of:
+The first control design consists of a PID-controller that controls the velocity by adapting the total wheel torque.
+
+The second longitudinal control design consists of:
 - PI-controller for velocity (acceleration as output)
 - Desired acceleration, as well as its gradient (jerk) are limited
 - Two degree of freedom controller for acceleration:
@@ -121,6 +126,9 @@ Especially due to the discrete velocity-changes of the `waypoint_follower` this 
 
 ![Longitudinal Controller][controller_long]
 
+The second concept needs a good model of the car as well as the vehicle acceleration which can only be computed from 
+the given velocity. 
+Due to these shortcomings we use the first controller concept.
 
 ### Object Detection
 Our approach:

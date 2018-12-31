@@ -34,7 +34,7 @@ that we have created in the `__init__` function.
 '''
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
-RECORD_CSV = True  # write states and actor-values to a csv-file
+RECORD_CSV = False  # write states and actor-values to a csv-file
 RECORD_TIME_TRIGGERED = False  # if True one row will be written in each dbw-cycle, otherwise upon cur-velocity-callback
 CREEPING_TORQUE = 800  # minimum braking torque during standstill (avoid creeping)
 P_THROTTLE = 2000  # engine power factor [Nm/1]: torque = P_THROTTLE * throttle
@@ -80,7 +80,8 @@ class DBWNode(object):
                                      decel_limit, accel_limit, wheel_radius, self.mass, P_THROTTLE, P_BRAKE, D_RESIST)
 
         # optional logging to a csv-file
-        self.csv_fields = ['time', 'x', 'y', 'v_raw', 'v', 'v_d', 'a', 'v_des', 'v_d_des', 'a_des', 'throttle', 'throttle_des', 'brake', 'brake_des', 'steer']
+        self.csv_fields = ['time', 'x', 'y', 'v_raw', 'v', 'v_d', 'a', 'v_des', 'v_d_des', 'a_des', 'throttle',
+                           'throttle_des', 'brake', 'brake_des', 'steer', 'torque']
         if RECORD_CSV:
             base_path = os.path.dirname(os.path.abspath(__file__))
             base_path = os.path.dirname(base_path)
@@ -209,7 +210,7 @@ class DBWNode(object):
                         # minimum braking torque in case of a stop
                         brake = CREEPING_TORQUE
                         # reset controller when standing
-                        # self.controller.reset()
+                        self.controller.reset()
                     else:
                         brake = 0.0
                     # of course we do not step on the gas while braking
@@ -238,6 +239,7 @@ class DBWNode(object):
                 v_d_des = 0.0
                 throttle = 0.0
                 brake = 0.0
+                total_wheel_torque = 0.0
 
             if RECORD_CSV:
                 self.csv_data['v_d'] = self.current_acceleration
@@ -245,6 +247,7 @@ class DBWNode(object):
                 self.csv_data['v_d_des'] = v_d_des
                 self.csv_data['throttle_des'] = throttle
                 self.csv_data['brake_des'] = brake
+                self.csv_data['torque'] = total_wheel_torque
                 if RECORD_TIME_TRIGGERED:
                     self.csv_data['time'] = now
                     self.csv_writer.writerow(self.csv_data)
