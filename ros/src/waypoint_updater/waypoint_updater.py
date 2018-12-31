@@ -97,12 +97,12 @@ class WaypointUpdater(object):
             # Use dbw acceleration parameter values (m/s2)
             self.plan_acceleration = rospy.get_param('/dbw_node/accel_limit')
             self.plan_deceleration = rospy.get_param('/dbw_node/decel_limit') * 0.8  # don't use full potential of
-            # decceleration for planning, controller might need some of the potential
+            # deceleration for planning, controller might need some of the potential
         else:
             # Use own acceleration parameter values (m/s2)
             self.plan_acceleration = PLAN_ACCELERATION
             self.plan_deceleration = PLAN_DECELERATION * 0.8  # don't use full potential of
-            # decceleration for planning, controller might need some of the potential
+            # deceleration for planning, controller might need some of the potential
 
         # **********************************************************
         # Debug logging output
